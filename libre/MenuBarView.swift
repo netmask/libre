@@ -15,14 +15,32 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with current reading
             if let reading = glucoseService.currentReading {
-                GlucoseReadingView(reading: reading)
+                // 3D Droplet visualization
+                HStack {
+                    Spacer()
+                    GlucoseDropletView(
+                        value: reading.value,
+                        trend: reading.trend,
+                        unit: glucoseService.glucoseUnit,
+                        status: reading.statusColor
+                    )
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+
+                // Timestamp
+                Text(reading.timestamp.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
 
                 Divider()
 
                 // 24-hour chart
                 GlucoseChartView(
                     data: glucoseService.historyData,
-                    currentReading: reading
+                    currentReading: reading,
+                    unit: glucoseService.glucoseUnit
                 )
 
             } else if case .connecting = glucoseService.connectionStatus {
@@ -173,11 +191,12 @@ struct GlucoseReadingView: View {
 struct MenuBarLabel: View {
     let reading: GlucoseReading?
     let status: ConnectionStatus
+    var unit: GlucoseUnit = .mgdL
 
     var body: some View {
         HStack(spacing: 2) {
             if let reading = reading {
-                Text(reading.displayValue)
+                Text(unit.format(reading.value))
                     .font(.system(.body, design: .rounded).monospacedDigit())
                 Image(systemName: reading.trend.sfSymbol)
                     .font(.caption)

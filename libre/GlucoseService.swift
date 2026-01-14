@@ -36,6 +36,11 @@ final class GlucoseService: GlucoseServiceProtocol {
     private(set) var patientName: String?
     private(set) var patientId: String?
     var selectedRegion: LibreRegion = .us
+    var glucoseUnit: GlucoseUnit = .mgdL {
+        didSet {
+            UserDefaults.standard.set(glucoseUnit.rawValue, forKey: "glucoseUnit")
+        }
+    }
 
     private let api: LibreLinkAPI
     private let keychainService: KeychainServiceProtocol
@@ -51,6 +56,12 @@ final class GlucoseService: GlucoseServiceProtocol {
         self.api = api
         self.keychainService = keychainService ?? KeychainService()
         self.modelContext = modelContext
+
+        // Load saved unit preference
+        if let savedUnit = UserDefaults.standard.string(forKey: "glucoseUnit"),
+           let unit = GlucoseUnit(rawValue: savedUnit) {
+            self.glucoseUnit = unit
+        }
     }
 
     // MARK: - Authentication
@@ -152,6 +163,9 @@ final class GlucoseService: GlucoseServiceProtocol {
 
             // Persist the data
             saveToCache(current: result.current, history: result.history)
+
+            // Check for alerts and send notifications
+            NotificationService.shared.checkAndNotify(reading: result.current, unit: glucoseUnit)
         } catch let error as LibreAPIError {
             connectionStatus = .error(error.localizedDescription)
         } catch {

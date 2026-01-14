@@ -11,9 +11,13 @@ import Charts
 struct GlucoseChartView: View {
     let data: [GlucoseDataPoint]
     let currentReading: GlucoseReading?
+    var unit: GlucoseUnit = .mgdL
 
-    private let lowThreshold = 70
-    private let highThreshold = 180
+    private let lowThresholdMgdL = 70
+    private let highThresholdMgdL = 180
+
+    private var lowThreshold: Double { unit.convert(lowThresholdMgdL) }
+    private var highThreshold: Double { unit.convert(highThresholdMgdL) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -34,7 +38,7 @@ struct GlucoseChartView: View {
                     RectangleMark(
                         xStart: .value("Start", minTime),
                         xEnd: .value("End", maxTime),
-                        yStart: .value("Low", 0),
+                        yStart: .value("Low", 0.0),
                         yEnd: .value("LowEnd", lowThreshold)
                     )
                     .foregroundStyle(.red.opacity(0.1))
@@ -61,7 +65,7 @@ struct GlucoseChartView: View {
                     ForEach(data) { point in
                         LineMark(
                             x: .value("Time", point.timestamp),
-                            y: .value("Glucose", point.value)
+                            y: .value("Glucose", unit.convert(point.value))
                         )
                         .foregroundStyle(.blue)
                         .lineStyle(StrokeStyle(lineWidth: 2))
@@ -71,7 +75,7 @@ struct GlucoseChartView: View {
                     ForEach(data) { point in
                         PointMark(
                             x: .value("Time", point.timestamp),
-                            y: .value("Glucose", point.value)
+                            y: .value("Glucose", unit.convert(point.value))
                         )
                         .foregroundStyle(colorForValue(point.value))
                         .symbolSize(20)
@@ -81,13 +85,13 @@ struct GlucoseChartView: View {
                     if let current = currentReading {
                         PointMark(
                             x: .value("Time", current.timestamp),
-                            y: .value("Glucose", current.value)
+                            y: .value("Glucose", unit.convert(current.value))
                         )
                         .foregroundStyle(colorForStatus(current.statusColor))
                         .symbolSize(80)
                         .symbol(.circle)
 
-                        RuleMark(y: .value("Current", current.value))
+                        RuleMark(y: .value("Current", unit.convert(current.value)))
                             .foregroundStyle(.gray.opacity(0.3))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     }
@@ -101,7 +105,7 @@ struct GlucoseChartView: View {
                         .foregroundStyle(.orange.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
-                .chartYScale(domain: 40...max(maxGlucose, 220))
+                .chartYScale(domain: minYScale...maxGlucose)
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .hour, count: 4)) { value in
                         AxisGridLine()
@@ -110,7 +114,7 @@ struct GlucoseChartView: View {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading, values: [40, 70, 100, 140, 180, 220]) { value in
+                    AxisMarks(position: .leading, values: yAxisValues) { value in
                         AxisGridLine()
                         AxisTick()
                         AxisValueLabel()
@@ -137,13 +141,27 @@ struct GlucoseChartView: View {
         data.last?.timestamp ?? Date()
     }
 
-    private var maxGlucose: Int {
-        max(data.map(\.value).max() ?? 180, currentReading?.value ?? 180, 200)
+    private var maxGlucose: Double {
+        let maxValue = max(data.map(\.value).max() ?? 180, currentReading?.value ?? 180, 200)
+        return unit.convert(maxValue)
+    }
+
+    private var minYScale: Double {
+        unit.convert(40)
+    }
+
+    private var yAxisValues: [Double] {
+        switch unit {
+        case .mgdL:
+            return [40, 70, 100, 140, 180, 220]
+        case .mmolL:
+            return [2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+        }
     }
 
     private func colorForValue(_ value: Int) -> Color {
-        if value < lowThreshold { return .red }
-        if value > highThreshold { return .orange }
+        if value < lowThresholdMgdL { return .red }
+        if value > highThresholdMgdL { return .orange }
         return .green
     }
 

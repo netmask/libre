@@ -92,6 +92,37 @@ enum TrendArrow: Int, Codable, Equatable {
     }
 }
 
+// MARK: - Glucose Unit
+
+enum GlucoseUnit: String, CaseIterable, Codable {
+    case mgdL = "mg/dL"
+    case mmolL = "mmol/L"
+
+    var label: String { rawValue }
+
+    /// Conversion factor: 1 mmol/L = 18.0182 mg/dL
+    static let conversionFactor: Double = 18.0182
+
+    func convert(_ mgdLValue: Int) -> Double {
+        switch self {
+        case .mgdL:
+            return Double(mgdLValue)
+        case .mmolL:
+            return Double(mgdLValue) / Self.conversionFactor
+        }
+    }
+
+    func format(_ mgdLValue: Int) -> String {
+        switch self {
+        case .mgdL:
+            return "\(mgdLValue)"
+        case .mmolL:
+            let mmol = Double(mgdLValue) / Self.conversionFactor
+            return String(format: "%.1f", mmol)
+        }
+    }
+}
+
 // MARK: - Connection Status
 
 enum ConnectionStatus: Equatable {

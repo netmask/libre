@@ -9,9 +9,37 @@ import Foundation
 import CryptoKit
 import os.log
 
-// MARK: - Logger
+// MARK: - Debug Logger
 
-private let logger = Logger(subsystem: "mx.garay.libre", category: "LibreLinkAPI")
+private struct DebugLogger {
+    private let logger = Logger(subsystem: "mx.garay.libre", category: "LibreLinkAPI")
+
+    func debug(_ message: String) {
+        #if DEBUG
+        logger.debug("\(message)")
+        #endif
+    }
+
+    func info(_ message: String) {
+        #if DEBUG
+        logger.info("\(message)")
+        #endif
+    }
+
+    func warning(_ message: String) {
+        #if DEBUG
+        logger.warning("\(message)")
+        #endif
+    }
+
+    func error(_ message: String) {
+        #if DEBUG
+        logger.error("\(message)")
+        #endif
+    }
+}
+
+private let logger = DebugLogger()
 
 // MARK: - URL Session Protocol
 

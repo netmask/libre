@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(GlucoseService.self) private var glucoseService
+    private var notificationService = NotificationService.shared
 
     @State private var email = ""
     @State private var password = ""
@@ -100,6 +101,18 @@ struct SettingsView: View {
             // Preferences Tab
             Form {
                 Section {
+                    Picker("Glucose Unit", selection: Bindable(glucoseService).glucoseUnit) {
+                        ForEach(GlucoseUnit.allCases, id: \.self) { unit in
+                            Text(unit.label).tag(unit)
+                        }
+                    }
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("Choose how glucose values are displayed.")
+                }
+
+                Section {
                     Picker("Refresh Interval", selection: $refreshInterval) {
                         Text("30 seconds").tag(30.0)
                         Text("1 minute").tag(60.0)
@@ -114,19 +127,98 @@ struct SettingsView: View {
                 } footer: {
                     Text("How often to fetch new glucose readings from LibreLink.")
                 }
-
-                Section {
-                    LabeledContent("Low Threshold", value: "70 mg/dL")
-                    LabeledContent("High Threshold", value: "180 mg/dL")
-                } header: {
-                    Text("Glucose Range")
-                } footer: {
-                    Text("Standard glucose range thresholds.")
-                }
             }
             .formStyle(.grouped)
             .tabItem {
                 Label("Preferences", systemImage: "slider.horizontal.3")
+            }
+
+            // Notifications Tab
+            Form {
+                Section {
+                    Toggle("Enable Notifications", isOn: Bindable(notificationService).notificationsEnabled)
+
+                    if !notificationService.isAuthorized {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Notifications not authorized")
+                                .font(.caption)
+                            Spacer()
+                            Button("Open Settings") {
+                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                            }
+                            .buttonStyle(.link)
+                        }
+                    }
+                } header: {
+                    Text("Alerts")
+                }
+
+                Section {
+                    HStack {
+                        Text("Low")
+                        Spacer()
+                        TextField("", value: Bindable(notificationService).lowThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("mg/dL")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("High")
+                        Spacer()
+                        TextField("", value: Bindable(notificationService).highThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("mg/dL")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Alert Thresholds")
+                } footer: {
+                    Text("You'll be notified when glucose crosses these levels.")
+                }
+
+                Section {
+                    HStack {
+                        Text("Urgent Low")
+                        Spacer()
+                        TextField("", value: Bindable(notificationService).urgentLowThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("mg/dL")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("Urgent High")
+                        Spacer()
+                        TextField("", value: Bindable(notificationService).urgentHighThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("mg/dL")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Urgent Thresholds")
+                } footer: {
+                    Text("Critical alerts with louder sounds for urgent glucose levels.")
+                }
+
+                Section {
+                    LabeledContent("Falling Fast", value: "Enabled")
+                    LabeledContent("Rising Fast", value: "Enabled")
+                } header: {
+                    Text("Trend Alerts")
+                } footer: {
+                    Text("Alerts when glucose is changing rapidly.")
+                }
+            }
+            .formStyle(.grouped)
+            .tabItem {
+                Label("Notifications", systemImage: "bell.badge")
             }
 
             // About Tab
@@ -157,7 +249,7 @@ struct SettingsView: View {
                 Label("About", systemImage: "info.circle")
             }
         }
-        .frame(width: 400, height: 320)
+        .frame(width: 400, height: 380)
         .onAppear {
             refreshInterval = glucoseService.refreshInterval
             selectedRegion = glucoseService.selectedRegion
