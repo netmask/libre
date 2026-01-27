@@ -12,6 +12,12 @@ A macOS menu bar app for monitoring glucose levels from FreeStyle Libre sensors 
 - Local data persistence with SwiftData
 - Multi-region support
 
+## Screenshots
+
+| Menu Bar Popup | Full View | Settings |
+|:-:|:-:|:-:|
+| ![Popup](assets/popup.png) | ![Full](assets/full.png) | ![Settings](assets/settings.png) |
+
 ## Requirements
 
 - macOS 14.0+
