@@ -28,6 +28,18 @@ struct MenuBarView: View {
                 }
                 .padding(.vertical, 8)
 
+                // Stale data warning
+                if glucoseService.isDataStale {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                        Text("Data may be outdated")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                }
+
                 // Timestamp
                 Text(reading.timestamp.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption2)
@@ -150,15 +162,16 @@ struct MenuBarView: View {
 
 struct GlucoseReadingView: View {
     let reading: GlucoseReading
+    var unit: GlucoseUnit = .mgdL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(reading.displayValue)
+                Text(unit.format(reading.value))
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .foregroundStyle(statusColor)
 
-                Text("mg/dL")
+                Text(unit.label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -192,14 +205,17 @@ struct MenuBarLabel: View {
     let reading: GlucoseReading?
     let status: ConnectionStatus
     var unit: GlucoseUnit = .mgdL
+    var isStale: Bool = false
 
     var body: some View {
         HStack(spacing: 2) {
             if let reading = reading {
                 Text(unit.format(reading.value))
                     .font(.system(.body, design: .rounded).monospacedDigit())
+                    .opacity(isStale ? 0.5 : 1.0)
                 Image(systemName: reading.trend.sfSymbol)
                     .font(.caption)
+                    .opacity(isStale ? 0.5 : 1.0)
             } else {
                 switch status {
                 case .connecting:

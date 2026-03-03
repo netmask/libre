@@ -27,6 +27,8 @@
 		61C623242F118CA200ED8AB5 /* libre.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = libre.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61C623312F118CA400ED8AB5 /* libreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = libreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		61C6233B2F118CA400ED8AB5 /* libreUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = libreUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		61FD2C1D2F56502800B2C45B /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		61FD2C1E2F56503F00B2C45B /* CLIRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIRefresh.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +81,7 @@
 				61C623342F118CA400ED8AB5 /* libreTests */,
 				61C6233E2F118CA400ED8AB5 /* libreUITests */,
 				61C623252F118CA200ED8AB5 /* Products */,
+				61FD2C1C2F56500800B2C45B /* libre-cli */,
 			);
 			sourceTree = "<group>";
 		};
@@ -90,6 +93,15 @@
 				61C6233B2F118CA400ED8AB5 /* libreUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		61FD2C1C2F56500800B2C45B /* libre-cli */ = {
+			isa = PBXGroup;
+			children = (
+				61FD2C1D2F56502800B2C45B /* main.swift */,
+				61FD2C1E2F56503F00B2C45B /* CLIRefresh.swift */,
+			);
+			path = "libre-cli";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -394,6 +406,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_USE_OPTIMIZATION_PROFILE = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -437,6 +450,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_USE_OPTIMIZATION_PROFILE = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;

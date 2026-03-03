@@ -60,7 +60,8 @@ struct libreApp: App {
             MenuBarLabel(
                 reading: hasAcceptedDisclaimer ? glucoseService.currentReading : nil,
                 status: hasAcceptedDisclaimer ? glucoseService.connectionStatus : .disconnected,
-                unit: glucoseService.glucoseUnit
+                unit: glucoseService.glucoseUnit,
+                isStale: glucoseService.isDataStale
             )
             .task {
                 // Only run once on app launch

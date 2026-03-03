@@ -35,6 +35,13 @@ final class GlucoseService: GlucoseServiceProtocol {
     private(set) var lastUpdated: Date?
     private(set) var patientName: String?
     private(set) var patientId: String?
+
+    /// Whether the current reading is older than 5 minutes and may be stale
+    var isDataStale: Bool {
+        guard let lastUpdated else { return false }
+        return Date().timeIntervalSince(lastUpdated) > 5 * 60
+    }
+
     var selectedRegion: LibreRegion = .us
     var glucoseUnit: GlucoseUnit = .mgdL {
         didSet {
@@ -46,7 +53,14 @@ final class GlucoseService: GlucoseServiceProtocol {
     private let keychainService: KeychainServiceProtocol
     private let modelContext: ModelContext?
     private var refreshTask: Task<Void, Never>?
-    var refreshInterval: TimeInterval = 60 // seconds
+    private var consecutiveFailures = 0
+    private static let maxBackoffInterval: TimeInterval = 5 * 60
+
+    var refreshInterval: TimeInterval = 60 {
+        didSet {
+            UserDefaults.standard.set(refreshInterval, forKey: "refreshInterval")
+        }
+    }
 
     init(
         api: LibreLinkAPI = LibreLinkAPI(),
@@ -61,6 +75,22 @@ final class GlucoseService: GlucoseServiceProtocol {
         if let savedUnit = UserDefaults.standard.string(forKey: "glucoseUnit"),
            let unit = GlucoseUnit(rawValue: savedUnit) {
             self.glucoseUnit = unit
+        }
+
+        // Load saved refresh interval
+        let savedInterval = UserDefaults.standard.double(forKey: "refreshInterval")
+        if savedInterval > 0 {
+            self.refreshInterval = savedInterval
+        }
+
+        // Load persisted patientId
+        if let savedPatientId = try? (keychainService ?? KeychainService()).load(key: "libre_patient_id") {
+            self.patientId = savedPatientId
+        }
+
+        // Load persisted patientName
+        if let savedName = UserDefaults.standard.string(forKey: "patientName") {
+            self.patientName = savedName
         }
     }
 
@@ -86,9 +116,13 @@ final class GlucoseService: GlucoseServiceProtocol {
             if let firstConnection = connections.first {
                 patientId = firstConnection.patientId
                 patientName = "\(firstConnection.firstName) \(firstConnection.lastName)"
+                // Persist patientId and name
+                try? keychainService.save(key: "libre_patient_id", value: firstConnection.patientId)
+                UserDefaults.standard.set(patientName, forKey: "patientName")
             }
 
             connectionStatus = .connected
+            consecutiveFailures = 0
 
             // Fetch initial reading
             await refresh()
@@ -108,11 +142,14 @@ final class GlucoseService: GlucoseServiceProtocol {
         try? keychainService.delete(key: "libre_email")
         try? keychainService.delete(key: "libre_password")
         try? keychainService.delete(key: "libre_token")
+        try? keychainService.delete(key: "libre_patient_id")
+        UserDefaults.standard.removeObject(forKey: "patientName")
         currentReading = nil
         historyData = []
         patientId = nil
         patientName = nil
         connectionStatus = .disconnected
+        consecutiveFailures = 0
     }
 
     func tryAutoLogin() async -> Bool {
@@ -141,7 +178,17 @@ final class GlucoseService: GlucoseServiceProtocol {
         refreshTask = Task {
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(for: .seconds(refreshInterval))
+
+                // Exponential backoff on consecutive failures
+                let delay: TimeInterval
+                if consecutiveFailures > 0 {
+                    let backoff = refreshInterval * pow(2.0, Double(min(consecutiveFailures, 5)))
+                    delay = min(backoff, Self.maxBackoffInterval)
+                } else {
+                    delay = refreshInterval
+                }
+
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }
@@ -160,15 +207,28 @@ final class GlucoseService: GlucoseServiceProtocol {
             historyData = result.history
             lastUpdated = Date()
             connectionStatus = .connected
+            consecutiveFailures = 0
 
             // Persist the data
             saveToCache(current: result.current, history: result.history)
 
             // Check for alerts and send notifications
             NotificationService.shared.checkAndNotify(reading: result.current, unit: glucoseUnit)
+        } catch LibreAPIError.notAuthenticated {
+            // Token expired — attempt re-authentication
+            let success = await tryAutoLogin()
+            if !success {
+                consecutiveFailures += 1
+                connectionStatus = .error("Session expired. Please log in again.")
+            }
+        } catch LibreAPIError.rateLimited {
+            consecutiveFailures += 1
+            connectionStatus = .error("Rate limited. Backing off...")
         } catch let error as LibreAPIError {
+            consecutiveFailures += 1
             connectionStatus = .error(error.localizedDescription)
         } catch {
+            consecutiveFailures += 1
             connectionStatus = .error(error.localizedDescription)
         }
     }
@@ -248,106 +308,24 @@ final class GlucoseService: GlucoseServiceProtocol {
             }
         }
 
-        // Save new history points (avoid duplicates by checking timestamp)
+        // Batch-check existing timestamps to avoid N+1 queries
+        let allPointsDescriptor = FetchDescriptor<PersistedGlucoseDataPoint>(
+            predicate: #Predicate { $0.timestamp >= twentyFourHoursAgo }
+        )
+        let existingTimestamps: Set<Date>
+        if let existingPoints = try? modelContext.fetch(allPointsDescriptor) {
+            existingTimestamps = Set(existingPoints.map { $0.timestamp })
+        } else {
+            existingTimestamps = []
+        }
+
         for dataPoint in history {
-            let pointTimestamp = dataPoint.timestamp
-            let existingDescriptor = FetchDescriptor<PersistedGlucoseDataPoint>(
-                predicate: #Predicate { $0.timestamp == pointTimestamp }
-            )
-            let existingCount = (try? modelContext.fetchCount(existingDescriptor)) ?? 0
-            if existingCount == 0 {
+            if !existingTimestamps.contains(dataPoint.timestamp) {
                 let persistedPoint = PersistedGlucoseDataPoint(from: dataPoint)
                 modelContext.insert(persistedPoint)
             }
         }
 
         try? modelContext.save()
-    }
-}
-
-// MARK: - Keychain Service Protocol
-
-@MainActor
-protocol KeychainServiceProtocol: Sendable {
-    func save(key: String, value: String) throws
-    func load(key: String) throws -> String?
-    func delete(key: String) throws
-}
-
-// MARK: - Keychain Service
-
-@MainActor
-final class KeychainService: KeychainServiceProtocol {
-    private let service = "mx.garay.libre"
-
-    enum KeychainError: Error {
-        case duplicateEntry
-        case unknown(OSStatus)
-        case notFound
-        case encodingError
-    }
-
-    func save(key: String, value: String) throws {
-        guard let data = value.data(using: .utf8) else {
-            throw KeychainError.encodingError
-        }
-
-        // Delete existing item first
-        try? delete(key: key)
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-
-        guard status == errSecSuccess else {
-            throw KeychainError.unknown(status)
-        }
-    }
-
-    func load(key: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        if status == errSecItemNotFound {
-            return nil
-        }
-
-        guard status == errSecSuccess else {
-            throw KeychainError.unknown(status)
-        }
-
-        guard let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else {
-            throw KeychainError.encodingError
-        }
-
-        return value
-    }
-
-    func delete(key: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
-
-        if status != errSecSuccess && status != errSecItemNotFound {
-            throw KeychainError.unknown(status)
-        }
     }
 }

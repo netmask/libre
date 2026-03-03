@@ -223,7 +223,7 @@ struct GlucoseResponse: Codable {
 
 // MARK: - API Errors
 
-enum LibreAPIError: Error, Equatable {
+enum LibreAPIError: LocalizedError, Equatable {
     case invalidCredentials
     case networkError(String)
     case serverError(Int)
@@ -234,12 +234,14 @@ enum LibreAPIError: Error, Equatable {
     case regionRedirect(String)
     case termsNotAccepted
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .invalidCredentials:
             return "Invalid email or password"
         case .networkError(let message):
             return "Network error: \(message)"
+        case .serverError(403):
+            return "Access denied. Check your region setting or update LibreLinkUp."
         case .serverError(let code):
             return "Server error: \(code)"
         case .decodingError:

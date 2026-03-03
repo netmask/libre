@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
     @Environment(GlucoseService.self) private var glucoseService
@@ -17,6 +18,11 @@ struct SettingsView: View {
     @State private var refreshInterval: Double = 60
     @State private var isLoggingIn = false
     @State private var errorMessage: String?
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private var thresholdUnitLabel: String {
+        glucoseService.glucoseUnit.label
+    }
 
     var body: some View {
         TabView {
@@ -127,6 +133,26 @@ struct SettingsView: View {
                 } footer: {
                     Text("How often to fetch new glucose readings from LibreLink.")
                 }
+
+                Section {
+                    Toggle("Launch at Login", isOn: $launchAtLogin)
+                        .onChange(of: launchAtLogin) { _, enabled in
+                            do {
+                                if enabled {
+                                    try SMAppService.mainApp.register()
+                                } else {
+                                    try SMAppService.mainApp.unregister()
+                                }
+                            } catch {
+                                // Revert toggle on failure
+                                launchAtLogin = !enabled
+                            }
+                        }
+                } header: {
+                    Text("System")
+                } footer: {
+                    Text("Automatically start libre when you log in.")
+                }
             }
             .formStyle(.grouped)
             .tabItem {
@@ -162,7 +188,7 @@ struct SettingsView: View {
                         TextField("", value: Bindable(notificationService).lowThreshold, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
-                        Text("mg/dL")
+                        Text(thresholdUnitLabel)
                             .foregroundStyle(.secondary)
                     }
 
@@ -172,13 +198,13 @@ struct SettingsView: View {
                         TextField("", value: Bindable(notificationService).highThreshold, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
-                        Text("mg/dL")
+                        Text(thresholdUnitLabel)
                             .foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("Alert Thresholds")
                 } footer: {
-                    Text("You'll be notified when glucose crosses these levels.")
+                    Text("You'll be notified when glucose crosses these levels. Values are in mg/dL.")
                 }
 
                 Section {
@@ -188,7 +214,7 @@ struct SettingsView: View {
                         TextField("", value: Bindable(notificationService).urgentLowThreshold, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
-                        Text("mg/dL")
+                        Text(thresholdUnitLabel)
                             .foregroundStyle(.secondary)
                     }
 
@@ -198,13 +224,13 @@ struct SettingsView: View {
                         TextField("", value: Bindable(notificationService).urgentHighThreshold, format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
-                        Text("mg/dL")
+                        Text(thresholdUnitLabel)
                             .foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("Urgent Thresholds")
                 } footer: {
-                    Text("Critical alerts with louder sounds for urgent glucose levels.")
+                    Text("Critical alerts with louder sounds for urgent glucose levels. Values are in mg/dL.")
                 }
 
                 Section {
@@ -253,6 +279,7 @@ struct SettingsView: View {
         .onAppear {
             refreshInterval = glucoseService.refreshInterval
             selectedRegion = glucoseService.selectedRegion
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
 
@@ -264,6 +291,9 @@ struct SettingsView: View {
             do {
                 try await glucoseService.login(email: email, password: password, region: selectedRegion)
                 glucoseService.startMonitoring()
+                // Clear credentials from view state after successful login
+                email = ""
+                password = ""
             } catch let error as LibreAPIError {
                 errorMessage = error.localizedDescription
             } catch {

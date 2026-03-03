@@ -15,6 +15,8 @@ struct GlucoseDropletView: View {
     let unit: GlucoseUnit
     let status: GlucoseStatus
 
+    @State private var isVisible = false
+
     private var blobColor: Color {
         switch status {
         case .low:
@@ -40,7 +42,7 @@ struct GlucoseDropletView: View {
     var body: some View {
         ZStack {
             // Metaball water droplets animation (no clipping)
-            MetaballCanvas(blobColor: blobColor, trend: trend)
+            MetaballCanvas(blobColor: blobColor, trend: trend, isAnimating: isVisible)
                 .frame(width: 180, height: 180)
 
             // Value display overlay
@@ -67,6 +69,8 @@ struct GlucoseDropletView: View {
             }
         }
         .frame(width: 180, height: 180)
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
     }
 }
 
@@ -75,6 +79,7 @@ struct GlucoseDropletView: View {
 struct MetaballCanvas: View {
     let blobColor: Color
     let trend: TrendArrow
+    var isAnimating: Bool = true
 
     /// Returns vertical bias (-1 = down, 0 = stable, 1 = up) and horizontal drift
     private var trendBias: (vertical: Double, horizontal: Double) {
@@ -95,7 +100,7 @@ struct MetaballCanvas: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1/60)) { timeline in
+        TimelineView(.animation(minimumInterval: 1/60, paused: !isAnimating)) { timeline in
             Canvas { ctx, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let bias = trendBias

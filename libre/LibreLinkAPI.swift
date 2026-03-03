@@ -59,9 +59,12 @@ actor LibreLinkAPI {
     private var currentRegion: String = "US"
     private let deviceId: String
 
+    private static let maxRedirects = 3
+
     // Only use verified working endpoints
     private let baseURLs: [String: String] = [
         "eu": "https://api-eu.libreview.io",
+        "eu2": "https://api-eu2.libreview.io",
         "us": "https://api-us.libreview.io",
         "ca": "https://api-ca.libreview.io",
         "au": "https://api-au.libreview.io",
@@ -98,6 +101,15 @@ actor LibreLinkAPI {
     // MARK: - Authentication
 
     func login(email: String, password: String) async throws -> LoginResponse {
+        try await login(email: email, password: password, redirectCount: 0)
+    }
+
+    private func login(email: String, password: String, redirectCount: Int) async throws -> LoginResponse {
+        guard redirectCount < Self.maxRedirects else {
+            logger.error("🔴 Too many redirects (\(redirectCount))")
+            throw LibreAPIError.networkError("Too many region redirects")
+        }
+
         let url = URL(string: "\(baseURL)/llu/auth/login")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -148,7 +160,7 @@ actor LibreLinkAPI {
                 logger.info("🔄 Redirect to region: \(region)")
                 currentRegion = region.lowercased()
                 // Retry with new region
-                return try await login(email: email, password: password)
+                return try await login(email: email, password: password, redirectCount: redirectCount + 1)
             }
 
             let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
@@ -375,20 +387,27 @@ actor LibreLinkAPI {
 
     // MARK: - Timestamp Parsing
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        return formatter
+    }()
+
+    private static let customFormatters: [DateFormatter] = {
+        ["M/d/yyyy h:mm:ss a", "MM/dd/yyyy h:mm:ss a", "M/d/yyyy H:mm:ss"].map { format in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            return formatter
+        }
+    }()
+
     private func parseTimestamp(_ ts: String) -> Date? {
-        // Try ISO8601 first
-        let isoFormatter = ISO8601DateFormatter()
-        if let date = isoFormatter.date(from: ts) {
+        if let date = Self.isoFormatter.date(from: ts) {
             return date
         }
 
-        // Try custom format: "M/d/yyyy h:mm:ss a" or "MM/dd/yyyy h:mm:ss a"
-        let customFormatter = DateFormatter()
-        customFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        for format in ["M/d/yyyy h:mm:ss a", "MM/dd/yyyy h:mm:ss a", "M/d/yyyy H:mm:ss"] {
-            customFormatter.dateFormat = format
-            if let date = customFormatter.date(from: ts) {
+        for formatter in Self.customFormatters {
+            if let date = formatter.date(from: ts) {
                 return date
             }
         }
