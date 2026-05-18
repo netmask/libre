@@ -46,7 +46,7 @@ func performBackgroundRefresh() {
     // Run async API work synchronously
     let semaphore = DispatchSemaphore(value: 0)
 
-    Task {
+    Task.detached {
         defer { semaphore.signal() }
 
         do {

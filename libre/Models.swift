@@ -123,6 +123,74 @@ enum GlucoseUnit: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Time Range
+
+enum GlucoseTimeRange: String, CaseIterable, Identifiable {
+    case h3, h6, h12, h24
+
+    var id: String { rawValue }
+
+    var hours: Int {
+        switch self {
+        case .h3: return 3
+        case .h6: return 6
+        case .h12: return 12
+        case .h24: return 24
+        }
+    }
+
+    var interval: TimeInterval { TimeInterval(hours) * 3600 }
+
+    var label: String { "\(hours)h" }
+}
+
+// MARK: - Aggregate Stats
+
+struct GlucoseStats: Equatable {
+    static let lowThresholdMgdL = 70
+    static let highThresholdMgdL = 180
+
+    let count: Int
+    let timeInRange: Double // 0...1, fraction of points in [low, high]
+    let average: Int        // mg/dL, rounded
+    let minimum: Int        // mg/dL
+    let maximum: Int        // mg/dL
+    let gmi: Double         // % (Glucose Management Indicator)
+
+    static let empty = GlucoseStats(count: 0, timeInRange: 0, average: 0, minimum: 0, maximum: 0, gmi: 0)
+
+    init(count: Int, timeInRange: Double, average: Int, minimum: Int, maximum: Int, gmi: Double) {
+        self.count = count
+        self.timeInRange = timeInRange
+        self.average = average
+        self.minimum = minimum
+        self.maximum = maximum
+        self.gmi = gmi
+    }
+
+    init(points: [GlucoseDataPoint], range: GlucoseTimeRange, now: Date = Date()) {
+        let cutoff = now.addingTimeInterval(-range.interval)
+        let filtered = points.filter { $0.timestamp >= cutoff }
+
+        guard !filtered.isEmpty else {
+            self = .empty
+            return
+        }
+
+        let values = filtered.map { $0.value }
+        let inRangeCount = values.filter { $0 >= Self.lowThresholdMgdL && $0 <= Self.highThresholdMgdL }.count
+        let mean = Double(values.reduce(0, +)) / Double(values.count)
+
+        self.count = filtered.count
+        self.timeInRange = Double(inRangeCount) / Double(filtered.count)
+        self.average = Int(mean.rounded())
+        self.minimum = values.min() ?? 0
+        self.maximum = values.max() ?? 0
+        // ADAG-derived: GMI(%) = 3.31 + 0.02392 × mean glucose (mg/dL)
+        self.gmi = 3.31 + 0.02392 * mean
+    }
+}
+
 // MARK: - Connection Status
 
 enum ConnectionStatus: Equatable {

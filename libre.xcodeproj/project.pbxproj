@@ -21,19 +21,60 @@
 			remoteGlobalIDString = 61C623232F118CA200ED8AB5;
 			remoteInfo = libre;
 		};
+		61FD2C2A2F56510A00B2C45B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 61C6231C2F118CA200ED8AB5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 61FD2C212F56510100B2C45B;
+			remoteInfo = "libre-cli";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		61FD2C242F56510400B2C45B /* Embed CLI Tool */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/libre-cli",
+			);
+			name = "Embed CLI Tool";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(EXECUTABLE_FOLDER_PATH)/libre-cli",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cp -f \"${BUILT_PRODUCTS_DIR}/libre-cli\" \"${BUILT_PRODUCTS_DIR}/${EXECUTABLE_FOLDER_PATH}/libre-cli\"\n";
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		61C623242F118CA200ED8AB5 /* libre.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = libre.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		61C623312F118CA400ED8AB5 /* libreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = libreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		61C6233B2F118CA400ED8AB5 /* libreUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = libreUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		61FD2C1D2F56502800B2C45B /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		61FD2C1E2F56503F00B2C45B /* CLIRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIRefresh.swift; sourceTree = "<group>"; };
+		61FD2C202F56510000B2C45B /* libre-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "libre-cli"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		61FD2C2B2F56510B00B2C45B /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				KeychainService.swift,
+				LibreLinkAPI.swift,
+				Models.swift,
+				PersistentModels.swift,
+			);
+			target = 61FD2C212F56510100B2C45B /* libre-cli */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		61C623262F118CA200ED8AB5 /* libre */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				61FD2C2B2F56510B00B2C45B /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 			path = libre;
 			sourceTree = "<group>";
 		};
@@ -45,6 +86,11 @@
 		61C6233E2F118CA400ED8AB5 /* libreUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = libreUITests;
+			sourceTree = "<group>";
+		};
+		61FD2C282F56510800B2C45B /* libre-cli */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "libre-cli";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -71,6 +117,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		61FD2C232F56510300B2C45B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,10 +131,10 @@
 			isa = PBXGroup;
 			children = (
 				61C623262F118CA200ED8AB5 /* libre */,
+				61FD2C282F56510800B2C45B /* libre-cli */,
 				61C623342F118CA400ED8AB5 /* libreTests */,
 				61C6233E2F118CA400ED8AB5 /* libreUITests */,
 				61C623252F118CA200ED8AB5 /* Products */,
-				61FD2C1C2F56500800B2C45B /* libre-cli */,
 			);
 			sourceTree = "<group>";
 		};
@@ -89,19 +142,11 @@
 			isa = PBXGroup;
 			children = (
 				61C623242F118CA200ED8AB5 /* libre.app */,
+				61FD2C202F56510000B2C45B /* libre-cli */,
 				61C623312F118CA400ED8AB5 /* libreTests.xctest */,
 				61C6233B2F118CA400ED8AB5 /* libreUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		61FD2C1C2F56500800B2C45B /* libre-cli */ = {
-			isa = PBXGroup;
-			children = (
-				61FD2C1D2F56502800B2C45B /* main.swift */,
-				61FD2C1E2F56503F00B2C45B /* CLIRefresh.swift */,
-			);
-			path = "libre-cli";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -114,10 +159,12 @@
 				61C623202F118CA200ED8AB5 /* Sources */,
 				61C623212F118CA200ED8AB5 /* Frameworks */,
 				61C623222F118CA200ED8AB5 /* Resources */,
+				61FD2C242F56510400B2C45B /* Embed CLI Tool */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				61FD2C292F56510900B2C45B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				61C623262F118CA200ED8AB5 /* libre */,
@@ -175,6 +222,27 @@
 			productReference = 61C6233B2F118CA400ED8AB5 /* libreUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		61FD2C212F56510100B2C45B /* libre-cli */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 61FD2C252F56510500B2C45B /* Build configuration list for PBXNativeTarget "libre-cli" */;
+			buildPhases = (
+				61FD2C222F56510200B2C45B /* Sources */,
+				61FD2C232F56510300B2C45B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				61FD2C282F56510800B2C45B /* libre-cli */,
+			);
+			name = "libre-cli";
+			packageProductDependencies = (
+			);
+			productName = "libre-cli";
+			productReference = 61FD2C202F56510000B2C45B /* libre-cli */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -196,6 +264,9 @@
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 61C623232F118CA200ED8AB5;
 					};
+					61FD2C212F56510100B2C45B = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 61C6231F2F118CA200ED8AB5 /* Build configuration list for PBXProject "libre" */;
@@ -213,6 +284,7 @@
 			projectRoot = "";
 			targets = (
 				61C623232F118CA200ED8AB5 /* libre */,
+				61FD2C212F56510100B2C45B /* libre-cli */,
 				61C623302F118CA400ED8AB5 /* libreTests */,
 				61C6233A2F118CA400ED8AB5 /* libreUITests */,
 			);
@@ -265,6 +337,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		61FD2C222F56510200B2C45B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -277,6 +356,11 @@
 			isa = PBXTargetDependency;
 			target = 61C623232F118CA200ED8AB5 /* libre */;
 			targetProxy = 61C6233C2F118CA400ED8AB5 /* PBXContainerItemProxy */;
+		};
+		61FD2C292F56510900B2C45B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 61FD2C212F56510100B2C45B /* libre-cli */;
+			targetProxy = 61FD2C2A2F56510A00B2C45B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -427,6 +511,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -471,6 +556,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -569,6 +655,38 @@
 			};
 			name = Release;
 		};
+		61FD2C262F56510600B2C45B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = PTN3KUKSCG;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "garay.mx.libre-cli";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		61FD2C272F56510700B2C45B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = PTN3KUKSCG;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "garay.mx.libre-cli";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -604,6 +722,15 @@
 			buildConfigurations = (
 				61C6234C2F118CA400ED8AB5 /* Debug */,
 				61C6234D2F118CA400ED8AB5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		61FD2C252F56510500B2C45B /* Build configuration list for PBXNativeTarget "libre-cli" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				61FD2C262F56510600B2C45B /* Debug */,
+				61FD2C272F56510700B2C45B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

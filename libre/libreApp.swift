@@ -14,7 +14,7 @@ struct libreApp: App {
     let modelContainer: ModelContainer
     @State private var glucoseService: GlucoseService
     @State private var hasStarted = false
-    @State private var hasAcceptedDisclaimer = UserDefaults.standard.bool(forKey: "hasAcceptedDisclaimer")
+    @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = false
 
     init() {
         let schema = Schema([
@@ -59,37 +59,19 @@ struct libreApp: App {
         } label: {
             MenuBarLabel(
                 reading: hasAcceptedDisclaimer ? glucoseService.currentReading : nil,
+                history: hasAcceptedDisclaimer ? glucoseService.historyData : [],
                 status: hasAcceptedDisclaimer ? glucoseService.connectionStatus : .disconnected,
                 unit: glucoseService.glucoseUnit,
                 isStale: glucoseService.isDataStale
             )
             .task {
-                // Only run once on app launch
-                guard !hasStarted else { return }
+                guard !hasStarted, hasAcceptedDisclaimer else { return }
                 hasStarted = true
-
-                // Wait for disclaimer acceptance
-                guard hasAcceptedDisclaimer else { return }
-
-                // Request notification permissions
-                await NotificationService.shared.requestAuthorization()
-
-                // Try auto-login and start monitoring
-                let success = await glucoseService.tryAutoLogin()
-                if success {
-                    glucoseService.startMonitoring()
-                }
+                await bootstrap()
             }
             .onChange(of: hasAcceptedDisclaimer) { _, accepted in
-                if accepted {
-                    Task {
-                        await NotificationService.shared.requestAuthorization()
-                        let success = await glucoseService.tryAutoLogin()
-                        if success {
-                            glucoseService.startMonitoring()
-                        }
-                    }
-                }
+                guard accepted else { return }
+                Task { await bootstrap() }
             }
         }
         .menuBarExtraStyle(.window)
@@ -104,6 +86,13 @@ struct libreApp: App {
             SettingsView()
                 .environment(glucoseService)
                 .modelContainer(modelContainer)
+        }
+    }
+
+    private func bootstrap() async {
+        await NotificationService.shared.requestAuthorization()
+        if await glucoseService.tryAutoLogin() {
+            glucoseService.startMonitoring()
         }
     }
 }

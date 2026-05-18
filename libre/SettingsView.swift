@@ -9,8 +9,13 @@ import SwiftUI
 import ServiceManagement
 
 struct SettingsView: View {
+    enum SettingsTab: Hashable {
+        case account, preferences, notifications, about
+    }
+
     @Environment(GlucoseService.self) private var glucoseService
-    private var notificationService = NotificationService.shared
+    @State private var notificationService = NotificationService.shared
+    @State private var selection: SettingsTab = .account
 
     @State private var email = ""
     @State private var password = ""
@@ -18,107 +23,103 @@ struct SettingsView: View {
     @State private var refreshInterval: Double = 60
     @State private var isLoggingIn = false
     @State private var errorMessage: String?
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLogin = false
+    @State private var cliInstalled = false
+    @State private var cliErrorMessage: String?
+
+    @AppStorage("showUnitInMenuBar") private var showUnitInMenuBar = false
+    @AppStorage("showSparkline") private var showSparkline = true
 
     private var thresholdUnitLabel: String {
         glucoseService.glucoseUnit.label
     }
 
     var body: some View {
-        TabView {
-            // Account Tab
-            Form {
-                Section {
-                    if glucoseService.connectionStatus == .connected {
-                        // Logged in state
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Connected", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+        @Bindable var glucoseService = glucoseService
+        @Bindable var notificationService = notificationService
+
+        TabView(selection: $selection) {
+            Tab("Account", systemImage: "person.circle", value: SettingsTab.account) {
+                Form {
+                    Section {
+                        if glucoseService.connectionStatus == .connected {
+                            LabeledContent {
+                                Button("Log Out", role: .destructive) {
+                                    glucoseService.logout()
+                                }
+                                .controlSize(.small)
+                            } label: {
+                                Label("Connected", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
 
                             if let name = glucoseService.patientName {
-                                Text("Monitoring: \(name)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                LabeledContent("Monitoring", value: name)
                             }
 
-                            Text("Region: \(glucoseService.selectedRegion.flag) \(glucoseService.selectedRegion.displayName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button("Log Out", role: .destructive) {
-                            glucoseService.logout()
-                        }
-                    } else {
-                        // Region picker
-                        Picker("Region", selection: $selectedRegion) {
-                            ForEach(LibreRegion.allCases) { region in
-                                Text("\(region.flag) \(region.displayName)")
-                                    .tag(region)
-                            }
-                        }
-                        .disabled(isLoggingIn)
-
-                        // Login form
-                        TextField("Email", text: $email)
-                            .textFieldStyle(.roundedBorder)
-                            .textContentType(.emailAddress)
-                            .disabled(isLoggingIn)
-
-                        SecureField("Password", text: $password)
-                            .textFieldStyle(.roundedBorder)
-                            .textContentType(.password)
-                            .disabled(isLoggingIn)
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-
-                        Button {
-                            login()
-                        } label: {
-                            HStack {
-                                if isLoggingIn {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
+                            LabeledContent(
+                                "Region",
+                                value: "\(glucoseService.selectedRegion.flag) \(glucoseService.selectedRegion.displayName)"
+                            )
+                        } else {
+                            Picker("Region", selection: $selectedRegion) {
+                                ForEach(LibreRegion.allCases) { region in
+                                    Text("\(region.flag) \(region.displayName)")
+                                        .tag(region)
                                 }
-                                Text(isLoggingIn ? "Logging In..." : "Log In")
                             }
-                            .frame(maxWidth: .infinity)
+                            .disabled(isLoggingIn)
+
+                            TextField("Email", text: $email)
+                                .textContentType(.emailAddress)
+                                .disabled(isLoggingIn)
+
+                            SecureField("Password", text: $password)
+                                .textContentType(.password)
+                                .disabled(isLoggingIn)
+
+                            if let errorMessage {
+                                Text(errorMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+
+                            Button(action: login) {
+                                HStack {
+                                    if isLoggingIn {
+                                        ProgressView()
+                                            .scaleEffect(0.7)
+                                    }
+                                    Text(isLoggingIn ? "Logging In…" : "Log In")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(email.isEmpty || password.isEmpty || isLoggingIn)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(email.isEmpty || password.isEmpty || isLoggingIn)
-                    }
-                } header: {
-                    Text("LibreLink Account")
-                } footer: {
-                    if glucoseService.connectionStatus != .connected {
-                        Text("Use the same credentials as the LibreLinkUp mobile app. Select your region based on where your LibreView account was created.")
+                    } header: {
+                        Text("LibreLink Account")
+                    } footer: {
+                        if glucoseService.connectionStatus != .connected {
+                            Text("Use the same credentials as the LibreLinkUp mobile app. Select your region based on where your LibreView account was created.")
+                        }
                     }
                 }
-            }
-            .formStyle(.grouped)
-            .tabItem {
-                Label("Account", systemImage: "person.circle")
+                .formStyle(.grouped)
             }
 
-            // Preferences Tab
-            Form {
-                Section {
-                    Picker("Glucose Unit", selection: Bindable(glucoseService).glucoseUnit) {
+            Tab("Preferences", systemImage: "slider.horizontal.3", value: SettingsTab.preferences) {
+                Form {
+                    Picker("Glucose Unit", selection: $glucoseService.glucoseUnit) {
                         ForEach(GlucoseUnit.allCases, id: \.self) { unit in
                             Text(unit.label).tag(unit)
                         }
                     }
-                } header: {
-                    Text("Display")
-                } footer: {
-                    Text("Choose how glucose values are displayed.")
-                }
 
-                Section {
+                    Toggle("Show unit in menu bar", isOn: $showUnitInMenuBar)
+
+                    Toggle("Show sparkline in menu bar", isOn: $showSparkline)
+
                     Picker("Refresh Interval", selection: $refreshInterval) {
                         Text("30 seconds").tag(30.0)
                         Text("1 minute").tag(60.0)
@@ -128,13 +129,7 @@ struct SettingsView: View {
                     .onChange(of: refreshInterval) { _, newValue in
                         glucoseService.updateRefreshInterval(newValue)
                     }
-                } header: {
-                    Text("Data Refresh")
-                } footer: {
-                    Text("How often to fetch new glucose readings from LibreLink.")
-                }
 
-                Section {
                     Toggle("Launch at Login", isOn: $launchAtLogin)
                         .onChange(of: launchAtLogin) { _, enabled in
                             do {
@@ -144,143 +139,154 @@ struct SettingsView: View {
                                     try SMAppService.mainApp.unregister()
                                 }
                             } catch {
-                                // Revert toggle on failure
                                 launchAtLogin = !enabled
                             }
                         }
-                } header: {
-                    Text("System")
-                } footer: {
-                    Text("Automatically start libre when you log in.")
                 }
-            }
-            .formStyle(.grouped)
-            .tabItem {
-                Label("Preferences", systemImage: "slider.horizontal.3")
+                .formStyle(.grouped)
             }
 
-            // Notifications Tab
-            Form {
-                Section {
-                    Toggle("Enable Notifications", isOn: Bindable(notificationService).notificationsEnabled)
+            Tab("Notifications", systemImage: "bell.badge", value: SettingsTab.notifications) {
+                Form {
+                    Section {
+                        Toggle("Enable Notifications", isOn: $notificationService.notificationsEnabled)
 
-                    if !notificationService.isAuthorized {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text("Notifications not authorized")
-                                .font(.caption)
-                            Spacer()
-                            Button("Open Settings") {
-                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                        if !notificationService.isAuthorized {
+                            HStack(spacing: 6) {
+                                Label("Not authorized", systemImage: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                    .font(.caption)
+                                Spacer()
+                                Button("Open Settings", action: openSystemNotificationSettings)
+                                    .buttonStyle(.link)
+                                    .controlSize(.small)
                             }
-                            .buttonStyle(.link)
                         }
                     }
-                } header: {
-                    Text("Alerts")
-                }
 
-                Section {
-                    HStack {
-                        Text("Low")
-                        Spacer()
-                        TextField("", value: Bindable(notificationService).lowThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                        Text(thresholdUnitLabel)
-                            .foregroundStyle(.secondary)
+                    Section {
+                        thresholdPair(
+                            leftTitle: "Low",
+                            left: $notificationService.lowThreshold,
+                            rightTitle: "High",
+                            right: $notificationService.highThreshold
+                        )
+                        thresholdPair(
+                            leftTitle: "Urgent Low",
+                            left: $notificationService.urgentLowThreshold,
+                            rightTitle: "Urgent High",
+                            right: $notificationService.urgentHighThreshold
+                        )
+                    } header: {
+                        Text("Thresholds (mg/dL)")
+                    } footer: {
+                        Text("Urgent thresholds use critical alert sounds.")
                     }
-
-                    HStack {
-                        Text("High")
-                        Spacer()
-                        TextField("", value: Bindable(notificationService).highThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                        Text(thresholdUnitLabel)
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Alert Thresholds")
-                } footer: {
-                    Text("You'll be notified when glucose crosses these levels. Values are in mg/dL.")
                 }
-
-                Section {
-                    HStack {
-                        Text("Urgent Low")
-                        Spacer()
-                        TextField("", value: Bindable(notificationService).urgentLowThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                        Text(thresholdUnitLabel)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack {
-                        Text("Urgent High")
-                        Spacer()
-                        TextField("", value: Bindable(notificationService).urgentHighThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                        Text(thresholdUnitLabel)
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Urgent Thresholds")
-                } footer: {
-                    Text("Critical alerts with louder sounds for urgent glucose levels. Values are in mg/dL.")
-                }
-
-                Section {
-                    LabeledContent("Falling Fast", value: "Enabled")
-                    LabeledContent("Rising Fast", value: "Enabled")
-                } header: {
-                    Text("Trend Alerts")
-                } footer: {
-                    Text("Alerts when glucose is changing rapidly.")
-                }
-            }
-            .formStyle(.grouped)
-            .tabItem {
-                Label("Notifications", systemImage: "bell.badge")
+                .formStyle(.grouped)
             }
 
-            // About Tab
-            Form {
-                Section {
-                    LabeledContent("Version", value: "1.0.0")
-                    LabeledContent("Build", value: "1")
-                }
-
-                Section {
-                    Link(destination: URL(string: "https://libreview.com")!) {
-                        Label("LibreView Website", systemImage: "arrow.up.right.square")
+            Tab("About", systemImage: "info.circle", value: SettingsTab.about) {
+                Form {
+                    Section {
+                        LabeledContent("Version", value: "1.0.0 (1)")
+                        Link("LibreView Website", destination: URL(string: "https://libreview.com")!)
+                        Link("FreeStyle Libre", destination: URL(string: "https://www.freestylelibre.com")!)
                     }
 
-                    Link(destination: URL(string: "https://www.freestylelibre.com")!) {
-                        Label("FreeStyle Libre", systemImage: "arrow.up.right.square")
+                    Section {
+                        LabeledContent {
+                            Button(cliInstalled ? "Reinstall" : "Install", action: installCLI)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Command Line Tool")
+                                Text(cliInstalled ? "Installed at /usr/local/bin/libre" : "Not installed")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let cliErrorMessage {
+                                    Text(cliErrorMessage)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                        }
+                    } footer: {
+                        Text("Install `libre` for shell prompt integration (e.g., Starship).")
+                    }
+
+                    Section {
+                        Text("Unofficial LibreLinkUp client. Not affiliated with Abbott Laboratories.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-
-                Section {
-                    Text("This app uses the unofficial LibreLinkUp API to display glucose readings. It is not affiliated with Abbott Laboratories.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-            .tabItem {
-                Label("About", systemImage: "info.circle")
+                .formStyle(.grouped)
             }
         }
-        .frame(width: 400, height: 380)
-        .onAppear {
+        .frame(minWidth: 380, idealWidth: 420, minHeight: 320, idealHeight: 360)
+        .task {
             refreshInterval = glucoseService.refreshInterval
             selectedRegion = glucoseService.selectedRegion
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            cliInstalled = FileManager.default.fileExists(atPath: "/usr/local/bin/libre")
         }
+    }
+
+    @ViewBuilder
+    private func thresholdPair(
+        leftTitle: String,
+        left: Binding<Int>,
+        rightTitle: String,
+        right: Binding<Int>
+    ) -> some View {
+        HStack(spacing: 16) {
+            HStack {
+                Text(leftTitle)
+                Spacer(minLength: 6)
+                TextField("\(leftTitle) threshold", value: left, format: .number)
+                    .labelsHidden()
+                    .frame(width: 56)
+            }
+            Divider()
+            HStack {
+                Text(rightTitle)
+                Spacer(minLength: 6)
+                TextField("\(rightTitle) threshold", value: right, format: .number)
+                    .labelsHidden()
+                    .frame(width: 56)
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func openSystemNotificationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func installCLI() {
+        cliErrorMessage = nil
+
+        guard let cliURL = Bundle.main.url(forAuxiliaryExecutable: "libre-cli") else {
+            cliErrorMessage = "Bundled libre-cli not found"
+            return
+        }
+
+        let escapedPath = cliURL.path.replacing("'", with: "'\\''")
+        let script = "do shell script \"ln -sf '\(escapedPath)' /usr/local/bin/libre\" with administrator privileges"
+
+        var error: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&error)
+
+        if let error {
+            cliErrorMessage = error[NSAppleScript.errorMessage] as? String ?? "Failed to install"
+            return
+        }
+
+        cliInstalled = FileManager.default.fileExists(atPath: "/usr/local/bin/libre")
     }
 
     private func login() {
@@ -291,11 +297,8 @@ struct SettingsView: View {
             do {
                 try await glucoseService.login(email: email, password: password, region: selectedRegion)
                 glucoseService.startMonitoring()
-                // Clear credentials from view state after successful login
                 email = ""
                 password = ""
-            } catch let error as LibreAPIError {
-                errorMessage = error.localizedDescription
             } catch {
                 errorMessage = error.localizedDescription
             }

@@ -1,0 +1,42 @@
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# ---- Xcode ----
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+xcuserdata/
+*.xccheckout
+*.xcscheme.bak
+
+# ---- Swift Package Manager ----
+.build/
+.swiftpm/
+Package.resolved
+
+# ---- Profiling / build artifacts ----
+*.profraw
+default.profraw
+OptimizationProfiles/
+
+# ---- Claude Code / AI tooling ----
+.claude/
+.agents/
+skills-lock.json
+
+# ---- Project site (GitHub Pages) ----
+docs/
+
+# ---- Misc ----
+*.log
+*.tmp

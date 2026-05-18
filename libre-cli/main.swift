@@ -148,15 +148,17 @@ func triggerBackgroundRefresh() {
     let cArgs = args.map { strdup($0) } + [nil]
     defer { cArgs.forEach { free($0) } }
 
-    var fileActions = posix_spawn_file_actions_t()
+    var fileActions: posix_spawn_file_actions_t? = nil
     posix_spawn_file_actions_init(&fileActions)
     posix_spawn_file_actions_addopen(&fileActions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0)
     posix_spawn_file_actions_addopen(&fileActions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+    defer { posix_spawn_file_actions_destroy(&fileActions) }
 
-    var attr = posix_spawnattr_t()
+    var attr: posix_spawnattr_t? = nil
     posix_spawnattr_init(&attr)
     posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
     posix_spawnattr_setpgroup(&attr, 0)
+    defer { posix_spawnattr_destroy(&attr) }
 
     _ = posix_spawn(
         &pid,
@@ -166,18 +168,15 @@ func triggerBackgroundRefresh() {
         cArgs.map { UnsafeMutablePointer(mutating: $0) },
         environ
     )
-
-    posix_spawn_file_actions_destroy(&fileActions)
-    posix_spawnattr_destroy(&attr)
 }
 
 // MARK: - Help
 
 let helpText = """
-libre-cli - Glucose reading for shell prompts
+libre - Glucose reading for shell prompts
 
 USAGE:
-    libre-cli [OPTIONS]
+    libre [OPTIONS]
 
 OPTIONS:
     --json      Output as JSON
@@ -189,12 +188,16 @@ OUTPUT FORMAT:
     Stale:    105 → (3m)      (with age when >5min old)
     JSON:     {"value":105,"trend":"→",...}
 
+INSTALL:
+    Open libre.app > Settings > About > Install Command Line Tool
+    This creates a symlink at /usr/local/bin/libre
+
 STARSHIP INTEGRATION:
     Add to ~/.config/starship.toml:
 
     [custom.glucose]
-    command = "libre-cli"
-    when = "test -x $(which libre-cli)"
+    command = "libre"
+    when = "test -x $(which libre)"
     format = "[$output]($style) "
     style = "bold green"
 """
