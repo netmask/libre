@@ -9,39 +9,6 @@ import Foundation
 import UserNotifications
 import SwiftUI
 
-// MARK: - Glucose Alert Type
-
-enum GlucoseAlertType: String {
-    case low = "low"
-    case high = "high"
-    case urgentLow = "urgent_low"
-    case urgentHigh = "urgent_high"
-    case fallingFast = "falling_fast"
-    case risingFast = "rising_fast"
-
-    var title: String {
-        switch self {
-        case .low: return "Low Glucose"
-        case .high: return "High Glucose"
-        case .urgentLow: return "Urgent Low Glucose"
-        case .urgentHigh: return "Urgent High Glucose"
-        case .fallingFast: return "Glucose Falling Fast"
-        case .risingFast: return "Glucose Rising Fast"
-        }
-    }
-
-    var sound: UNNotificationSound {
-        switch self {
-        case .urgentLow, .urgentHigh:
-            return .defaultCritical
-        default:
-            return .default
-        }
-    }
-}
-
-// MARK: - Notification Service
-
 @MainActor
 @Observable
 final class NotificationService {
@@ -104,42 +71,64 @@ final class NotificationService {
     }
 
     func checkAuthorization() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let authorized = settings.authorizationStatus == .authorized
-            Task { @MainActor in
-                self.isAuthorized = authorized
-            }
+        Task {
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            isAuthorized = settings.authorizationStatus == .authorized
         }
     }
 
     // MARK: - Alert Checking
 
+    /// Threshold configuration for alert decisions, separated out so the
+    /// decision logic is a pure function that unit tests can exercise.
+    nonisolated struct Thresholds {
+        var low: Int
+        var high: Int
+        var urgentLow: Int
+        var urgentHigh: Int
+    }
+
+    /// Pure decision logic: which alerts does this reading trigger?
+    /// Cooldowns and authorization are applied later, at send time.
+    nonisolated static func triggeredAlerts(
+        value: Int,
+        trend: TrendArrow,
+        thresholds: Thresholds
+    ) -> [GlucoseAlertType] {
+        var alerts: [GlucoseAlertType] = []
+
+        // Urgent thresholds win over regular ones
+        if value <= thresholds.urgentLow {
+            alerts.append(.urgentLow)
+        } else if value >= thresholds.urgentHigh {
+            alerts.append(.urgentHigh)
+        } else if value <= thresholds.low {
+            alerts.append(.low)
+        } else if value >= thresholds.high {
+            alerts.append(.high)
+        }
+
+        switch trend {
+        case .singleDown: alerts.append(.fallingFast)
+        case .singleUp:   alerts.append(.risingFast)
+        default:          break
+        }
+
+        return alerts
+    }
+
     func checkAndNotify(reading: GlucoseReading, unit: GlucoseUnit) {
         guard notificationsEnabled && isAuthorized else { return }
 
-        let value = reading.value
+        let thresholds = Thresholds(
+            low: lowThreshold,
+            high: highThreshold,
+            urgentLow: urgentLowThreshold,
+            urgentHigh: urgentHighThreshold
+        )
 
-        // Check urgent thresholds first (most important)
-        if value <= urgentLowThreshold {
-            sendAlert(.urgentLow, value: value, unit: unit)
-        } else if value >= urgentHighThreshold {
-            sendAlert(.urgentHigh, value: value, unit: unit)
-        }
-        // Check regular thresholds
-        else if value <= lowThreshold {
-            sendAlert(.low, value: value, unit: unit)
-        } else if value >= highThreshold {
-            sendAlert(.high, value: value, unit: unit)
-        }
-
-        // Check trend-based alerts
-        switch reading.trend {
-        case .singleDown:
-            sendAlert(.fallingFast, value: value, unit: unit)
-        case .singleUp:
-            sendAlert(.risingFast, value: value, unit: unit)
-        default:
-            break
+        for alert in Self.triggeredAlerts(value: reading.value, trend: reading.trend, thresholds: thresholds) {
+            sendAlert(alert, value: reading.value, unit: unit)
         }
     }
 
@@ -148,7 +137,7 @@ final class NotificationService {
     private func sendAlert(_ type: GlucoseAlertType, value: Int, unit: GlucoseUnit) {
         // Check cooldown
         if let lastTime = lastAlertTimes[type],
-           Date().timeIntervalSince(lastTime) < alertCooldown {
+           Date.now.timeIntervalSince(lastTime) < alertCooldown {
             return
         }
 
@@ -165,16 +154,18 @@ final class NotificationService {
         ]
 
         let request = UNNotificationRequest(
-            identifier: "glucose_\(type.rawValue)_\(Date().timeIntervalSince1970)",
+            identifier: "glucose_\(type.rawValue)_\(Date.now.timeIntervalSince1970)",
             content: content,
             trigger: nil // Deliver immediately
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
-            if error == nil {
-                Task { @MainActor in
-                    self.lastAlertTimes[type] = Date()
-                }
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+                lastAlertTimes[type] = Date.now
+            } catch {
+                // Delivery failed; leave the cooldown untouched so the next
+                // reading can retry.
             }
         }
     }
@@ -196,17 +187,5 @@ final class NotificationService {
         case .risingFast:
             return "Your glucose is \(formattedValue) and rising quickly."
         }
-    }
-
-    // MARK: - Clear Notifications
-
-    func clearAllNotifications() {
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-    }
-
-    // Reset cooldowns (useful for testing)
-    func resetCooldowns() {
-        lastAlertTimes.removeAll()
     }
 }

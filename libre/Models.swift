@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Glucose Reading
 
-struct GlucoseReading: Codable, Equatable {
+nonisolated struct GlucoseReading: Codable, Equatable {
     let value: Int // mg/dL
     let trend: TrendArrow
     let timestamp: Date
@@ -29,13 +29,15 @@ struct GlucoseReading: Codable, Equatable {
 
 // MARK: - Historical Data Point
 
-struct GlucoseDataPoint: Identifiable, Equatable {
-    let id = UUID()
+nonisolated struct GlucoseDataPoint: Identifiable, Equatable {
+    // Timestamp is the stable identity: points re-parsed from the API on every
+    // refresh keep the same ID, so ForEach/Chart can diff instead of rebuilding.
+    var id: Date { timestamp }
     let value: Int
     let timestamp: Date
 
-    var isHigh: Bool { value > 180 }
-    var isLow: Bool { value < 70 }
+    var isHigh: Bool { value > GlucoseStats.highThresholdMgdL }
+    var isLow: Bool { value < GlucoseStats.lowThresholdMgdL }
 
     var statusColor: GlucoseStatus {
         if isLow { return .low }
@@ -44,13 +46,13 @@ struct GlucoseDataPoint: Identifiable, Equatable {
     }
 }
 
-enum GlucoseStatus {
+nonisolated enum GlucoseStatus {
     case low, normal, high
 }
 
 // MARK: - Trend Arrow
 
-enum TrendArrow: Int, Codable, Equatable {
+nonisolated enum TrendArrow: Int, Codable, Equatable {
     case notComputable = 0
     case singleDown = 1
     case fortyFiveDown = 2
@@ -94,7 +96,7 @@ enum TrendArrow: Int, Codable, Equatable {
 
 // MARK: - Glucose Unit
 
-enum GlucoseUnit: String, CaseIterable, Codable {
+nonisolated enum GlucoseUnit: String, CaseIterable, Codable {
     case mgdL = "mg/dL"
     case mmolL = "mmol/L"
 
@@ -115,17 +117,17 @@ enum GlucoseUnit: String, CaseIterable, Codable {
     func format(_ mgdLValue: Int) -> String {
         switch self {
         case .mgdL:
-            return "\(mgdLValue)"
+            "\(mgdLValue)"
         case .mmolL:
-            let mmol = Double(mgdLValue) / Self.conversionFactor
-            return String(format: "%.1f", mmol)
+            (Double(mgdLValue) / Self.conversionFactor)
+                .formatted(.number.precision(.fractionLength(1)))
         }
     }
 }
 
 // MARK: - Time Range
 
-enum GlucoseTimeRange: String, CaseIterable, Identifiable {
+nonisolated enum GlucoseTimeRange: String, CaseIterable, Identifiable {
     case h3, h6, h12, h24
 
     var id: String { rawValue }
@@ -146,7 +148,7 @@ enum GlucoseTimeRange: String, CaseIterable, Identifiable {
 
 // MARK: - Aggregate Stats
 
-struct GlucoseStats: Equatable {
+nonisolated struct GlucoseStats: Equatable {
     static let lowThresholdMgdL = 70
     static let highThresholdMgdL = 180
 
@@ -193,7 +195,7 @@ struct GlucoseStats: Equatable {
 
 // MARK: - Connection Status
 
-enum ConnectionStatus: Equatable {
+nonisolated enum ConnectionStatus: Equatable {
     case disconnected
     case connecting
     case connected
@@ -265,79 +267,51 @@ nonisolated struct GlucoseResponse: Codable {
         let FactoryTimestamp: String?
         let isHigh: Bool?
         let isLow: Bool?
-
-        enum CodingKeys: String, CodingKey {
-            case ValueInMgPerDl
-            case TrendArrow
-            case Timestamp
-            case FactoryTimestamp
-            case isHigh
-            case isLow
-        }
     }
 
     struct GraphPoint: Codable {
         let ValueInMgPerDl: Int
         let Timestamp: String
         let FactoryTimestamp: String?
-
-        enum CodingKeys: String, CodingKey {
-            case ValueInMgPerDl
-            case Timestamp
-            case FactoryTimestamp
-        }
     }
 }
 
 // MARK: - API Errors
 
-enum LibreAPIError: LocalizedError, Equatable {
+nonisolated enum LibreAPIError: LocalizedError, Equatable {
     case invalidCredentials
     case networkError(String)
     case serverError(Int)
-    case decodingError
     case noData
     case notAuthenticated
     case rateLimited
-    case regionRedirect(String)
     case termsNotAccepted
 
     var errorDescription: String? {
         switch self {
         case .invalidCredentials:
-            return "Invalid email or password"
+            "Invalid email or password"
         case .networkError(let message):
-            return "Network error: \(message)"
+            "Network error: \(message)"
         case .serverError(403):
-            return "Access denied. Check your region setting or update LibreLinkUp."
+            "Access denied. Check your region setting or update LibreLinkUp."
         case .serverError(let code):
-            return "Server error: \(code)"
-        case .decodingError:
-            return "Failed to parse response"
+            "Server error: \(code)"
         case .noData:
-            return "No glucose data available"
+            "No glucose data available"
         case .notAuthenticated:
-            return "Please log in"
+            "Please log in"
         case .rateLimited:
-            return "Too many requests, please wait"
-        case .regionRedirect(let region):
-            return "Redirecting to region: \(region)"
+            "Too many requests, please wait"
         case .termsNotAccepted:
-            return "Please accept terms in the LibreLinkUp app first"
+            "Please accept terms in the LibreLinkUp app first"
         }
     }
 }
 
-// MARK: - User Credentials
-
-struct UserCredentials: Codable, Equatable {
-    let email: String
-    let password: String
-}
-
 // MARK: - Region
 
-enum LibreRegion: String, CaseIterable, Identifiable {
+nonisolated enum LibreRegion: String, CaseIterable, Identifiable {
     case eu = "eu"
     case us = "us"
     case eu2 = "eu2"

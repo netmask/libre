@@ -8,6 +8,19 @@
 import Foundation
 import SwiftData
 
+// MARK: - Schema
+
+/// Single definition of the SwiftData schema, shared by the app and the CLI
+/// so the two can never drift apart.
+nonisolated enum GlucoseSchema {
+    static var schema: Schema {
+        Schema([
+            PersistedGlucoseReading.self,
+            PersistedGlucoseDataPoint.self
+        ])
+    }
+}
+
 // MARK: - Persistent Glucose Reading
 
 @Model

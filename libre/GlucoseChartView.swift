@@ -22,29 +22,15 @@ struct GlucoseChartView: View {
     private var lowThreshold: Double { unit.convert(lowThresholdMgdL) }
     private var highThreshold: Double { unit.convert(highThresholdMgdL) }
 
-    private var filteredData: [GlucoseDataPoint] {
-        let cutoff = Date().addingTimeInterval(-range.interval)
-        return data.filter { $0.timestamp >= cutoff }
-    }
-
-    private var hoveredPoint: GlucoseDataPoint? {
-        guard let hoverTime, !filteredData.isEmpty else { return nil }
-        return filteredData.min(by: {
-            abs($0.timestamp.timeIntervalSince(hoverTime)) < abs($1.timestamp.timeIntervalSince(hoverTime))
-        })
-    }
-
-    private var hoverTimeFormat: Date.FormatStyle {
-        switch range {
-        case .h3, .h6:   .dateTime.hour().minute()
-        case .h12:       .dateTime.hour().minute()
-        case .h24:       .dateTime.weekday(.abbreviated).hour().minute()
-        }
-    }
-
     var body: some View {
+        // Snapshot the clock and filter once per body evaluation, so every mark,
+        // axis, and hover lookup below shares consistent data and time bounds.
+        let now = Date.now
+        let minTime = now.addingTimeInterval(-range.interval)
+        let filtered = data.filter { $0.timestamp >= minTime }
+
         Group {
-            if filteredData.isEmpty {
+            if filtered.isEmpty {
                 ContentUnavailableView {
                     Label("No Data", systemImage: "chart.line.downtrend.xyaxis")
                 } description: {
@@ -52,126 +38,136 @@ struct GlucoseChartView: View {
                 }
                 .frame(height: 180)
             } else {
-                Chart {
-                    RectangleMark(
-                        xStart: .value("Start", minTime),
-                        xEnd: .value("End", maxTime),
-                        yStart: .value("NormalLow", lowThreshold),
-                        yEnd: .value("NormalHigh", highThreshold)
-                    )
-                    .foregroundStyle(.green.opacity(0.05))
-
-                    ForEach(filteredData) { point in
-                        AreaMark(
-                            x: .value("Time", point.timestamp),
-                            yStart: .value("Floor", minYScale),
-                            yEnd: .value("Glucose", unit.convert(point.value))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(areaGradient)
-                    }
-
-                    ForEach(filteredData) { point in
-                        LineMark(
-                            x: .value("Time", point.timestamp),
-                            y: .value("Glucose", unit.convert(point.value))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(lineColor.gradient)
-                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    }
-
-                    if let current = currentReading, current.timestamp >= minTime, hoveredPoint == nil {
-                        let currentValue = unit.convert(current.value)
-                        let dotColor = colorForStatus(current.statusColor)
-
-                        PointMark(
-                            x: .value("Time", current.timestamp),
-                            y: .value("Glucose", currentValue)
-                        )
-                        .symbolSize(260)
-                        .foregroundStyle(dotColor.opacity(0.18))
-
-                        PointMark(
-                            x: .value("Time", current.timestamp),
-                            y: .value("Glucose", currentValue)
-                        )
-                        .symbolSize(70)
-                        .foregroundStyle(dotColor.gradient)
-                    }
-
-                    if let hovered = hoveredPoint {
-                        let hoveredValue = unit.convert(hovered.value)
-                        let hoveredColor = colorForValue(hovered.value)
-
-                        RuleMark(x: .value("Hover", hovered.timestamp))
-                            .foregroundStyle(.secondary.opacity(0.35))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-
-                        PointMark(
-                            x: .value("Time", hovered.timestamp),
-                            y: .value("Glucose", hoveredValue)
-                        )
-                        .symbolSize(60)
-                        .foregroundStyle(hoveredColor.gradient)
-                        .annotation(
-                            position: .top,
-                            spacing: 6,
-                            overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                        ) {
-                            HoverReadout(
-                                value: unit.format(hovered.value),
-                                unit: unit.label,
-                                time: hovered.timestamp,
-                                format: hoverTimeFormat,
-                                accent: hoveredColor
-                            )
-                        }
-                    }
-                }
-                .chartLegend(.hidden)
-                .chartXSelection(value: $hoverTime)
-                .chartYScale(domain: minYScale...maxYScale)
-                .chartXAxis {
-                    AxisMarks(values: xAxisStride) { _ in
-                        AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
-                        AxisValueLabel(format: xAxisFormat)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading, values: yAxisValues) { _ in
-                        AxisGridLine().foregroundStyle(.secondary.opacity(0.12))
-                        AxisValueLabel()
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(height: 180)
+                chart(filtered: filtered, minTime: minTime, maxTime: now)
             }
         }
     }
 
-    private var minTime: Date {
-        Date().addingTimeInterval(-range.interval)
+    private func chart(filtered: [GlucoseDataPoint], minTime: Date, maxTime: Date) -> some View {
+        let hovered = hoveredPoint(in: filtered)
+        let lineColor = lineColor
+        let maxY = maxYScale(filtered: filtered)
+
+        return Chart {
+            RectangleMark(
+                xStart: .value("Start", minTime),
+                xEnd: .value("End", maxTime),
+                yStart: .value("NormalLow", lowThreshold),
+                yEnd: .value("NormalHigh", highThreshold)
+            )
+            .foregroundStyle(.green.opacity(0.05))
+
+            ForEach(filtered) { point in
+                AreaMark(
+                    x: .value("Time", point.timestamp),
+                    yStart: .value("Floor", minYScale),
+                    yEnd: .value("Glucose", unit.convert(point.value))
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(areaGradient(for: lineColor))
+            }
+
+            ForEach(filtered) { point in
+                LineMark(
+                    x: .value("Time", point.timestamp),
+                    y: .value("Glucose", unit.convert(point.value))
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(lineColor.gradient)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+
+            if let current = currentReading, current.timestamp >= minTime, hovered == nil {
+                let currentValue = unit.convert(current.value)
+                let dotColor = current.statusColor.tint
+
+                PointMark(
+                    x: .value("Time", current.timestamp),
+                    y: .value("Glucose", currentValue)
+                )
+                .symbolSize(260)
+                .foregroundStyle(dotColor.opacity(0.18))
+
+                PointMark(
+                    x: .value("Time", current.timestamp),
+                    y: .value("Glucose", currentValue)
+                )
+                .symbolSize(70)
+                .foregroundStyle(dotColor.gradient)
+            }
+
+            if let hovered {
+                let hoveredValue = unit.convert(hovered.value)
+                let hoveredColor = hovered.statusColor.tint
+
+                RuleMark(x: .value("Hover", hovered.timestamp))
+                    .foregroundStyle(.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+
+                PointMark(
+                    x: .value("Time", hovered.timestamp),
+                    y: .value("Glucose", hoveredValue)
+                )
+                .symbolSize(60)
+                .foregroundStyle(hoveredColor.gradient)
+                .annotation(
+                    position: .top,
+                    spacing: 6,
+                    overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                ) {
+                    HoverReadout(
+                        value: unit.format(hovered.value),
+                        unit: unit.label,
+                        time: hovered.timestamp,
+                        format: hoverTimeFormat,
+                        accent: hoveredColor
+                    )
+                }
+            }
+        }
+        .chartLegend(.hidden)
+        .chartXSelection(value: $hoverTime)
+        .chartYScale(domain: minYScale...maxY)
+        .chartXAxis {
+            AxisMarks(values: xAxisStride) { _ in
+                AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
+                AxisValueLabel(format: xAxisFormat)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: yAxisValues) { _ in
+                AxisGridLine().foregroundStyle(.secondary.opacity(0.12))
+                AxisValueLabel()
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(height: 180)
     }
 
-    private var maxTime: Date {
-        Date()
+    private func hoveredPoint(in filtered: [GlucoseDataPoint]) -> GlucoseDataPoint? {
+        guard let hoverTime, !filtered.isEmpty else { return nil }
+        return filtered.min(by: {
+            abs($0.timestamp.timeIntervalSince(hoverTime)) < abs($1.timestamp.timeIntervalSince(hoverTime))
+        })
     }
 
-    private var maxGlucose: Double {
+    private var hoverTimeFormat: Date.FormatStyle {
+        switch range {
+        case .h3, .h6, .h12: .dateTime.hour().minute()
+        case .h24:           .dateTime.weekday(.abbreviated).hour().minute()
+        }
+    }
+
+    private func maxYScale(filtered: [GlucoseDataPoint]) -> Double {
         let highestValue = max(
-            filteredData.map(\.value).max() ?? highThresholdMgdL,
+            filtered.map(\.value).max() ?? highThresholdMgdL,
             currentReading?.value ?? highThresholdMgdL,
             220
         )
-        return Double(highestValue)
-    }
-
-    private var maxYScale: Double {
-        unit.convert(Int(maxGlucose))
+        return unit.convert(highestValue)
     }
 
     private var minYScale: Double {
@@ -180,52 +176,36 @@ struct GlucoseChartView: View {
 
     private var yAxisValues: [Double] {
         switch unit {
-        case .mgdL:
-            return [40, 70, 100, 140, 180, 220]
-        case .mmolL:
-            return [2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+        case .mgdL:  [40, 70, 100, 140, 180, 220]
+        case .mmolL: [2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
         }
     }
 
     private var xAxisStride: AxisMarkValues {
         switch range {
-        case .h3:  return .stride(by: .minute, count: 30)
-        case .h6:  return .stride(by: .hour, count: 1)
-        case .h12: return .stride(by: .hour, count: 2)
-        case .h24: return .stride(by: .hour, count: 4)
+        case .h3:  .stride(by: .minute, count: 30)
+        case .h6:  .stride(by: .hour, count: 1)
+        case .h12: .stride(by: .hour, count: 2)
+        case .h24: .stride(by: .hour, count: 4)
         }
     }
 
     private var xAxisFormat: Date.FormatStyle {
         switch range {
-        case .h3:  return .dateTime.hour().minute()
-        default:   return .dateTime.hour()
+        case .h3: .dateTime.hour().minute()
+        default:  .dateTime.hour()
         }
-    }
-
-    private func colorForStatus(_ status: GlucoseStatus) -> Color {
-        switch status {
-        case .low:    .red
-        case .high:   .orange
-        case .normal: .green
-        }
-    }
-
-    private func colorForValue(_ value: Int) -> Color {
-        if value < lowThresholdMgdL { .red }
-        else if value > highThresholdMgdL { .orange }
-        else { .green }
     }
 
     private var lineColor: Color {
         if let current = currentReading {
-            colorForStatus(current.statusColor)
+            current.statusColor.tint
         } else {
             .blue
         }
     }
 
-    private var areaGradient: LinearGradient {
+    private func areaGradient(for lineColor: Color) -> LinearGradient {
         LinearGradient(
             colors: [
                 lineColor.opacity(0.32),
@@ -280,14 +260,14 @@ private struct HoverReadout: View {
     let sampleData: [GlucoseDataPoint] = (0..<24).map { hour in
         GlucoseDataPoint(
             value: Int.random(in: 80...160),
-            timestamp: Date().addingTimeInterval(Double(-24 + hour) * 3600)
+            timestamp: Date.now.addingTimeInterval(Double(-24 + hour) * 3600)
         )
     }
 
     let currentReading = GlucoseReading(
         value: 115,
         trend: .flat,
-        timestamp: Date(),
+        timestamp: Date.now,
         isHigh: false,
         isLow: false
     )

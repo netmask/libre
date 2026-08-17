@@ -30,23 +30,17 @@ struct DisclaimerView: View {
             .frame(height: 200)
             .padding()
             .background(Color(.textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(.rect(cornerRadius: 8))
 
             VStack(spacing: 12) {
-                Button {
-                    UserDefaults.standard.set(true, forKey: "hasAcceptedDisclaimer")
-                    hasAcceptedDisclaimer = true
-                    dismissWindow(id: "disclaimer")
-                } label: {
+                Button(action: accept) {
                     Text("I Understand and Accept")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Button {
-                    NSApplication.shared.terminate(nil)
-                } label: {
+                Button(action: quit) {
                     Text("Quit")
                         .frame(maxWidth: .infinity)
                 }
@@ -56,6 +50,17 @@ struct DisclaimerView: View {
         }
         .padding(30)
         .frame(width: 450)
+    }
+
+    private func accept() {
+        // The binding is backed by @AppStorage in the App, so setting it
+        // persists the acceptance — no separate UserDefaults write needed.
+        hasAcceptedDisclaimer = true
+        dismissWindow(id: "disclaimer")
+    }
+
+    private func quit() {
+        NSApplication.shared.terminate(nil)
     }
 
     private var disclaimerText: String {

@@ -56,11 +56,6 @@ nonisolated func appContainerURL() -> URL? {
 }
 
 nonisolated func createModelContainer() throws -> ModelContainer {
-    let schema = Schema([
-        PersistedGlucoseReading.self,
-        PersistedGlucoseDataPoint.self
-    ])
-
     guard let storeDir = appContainerURL() else {
         fputs("error: could not find app's SwiftData store. Is the app installed and has been run at least once?\n", stderr)
         exit(1)
@@ -69,10 +64,11 @@ nonisolated func createModelContainer() throws -> ModelContainer {
     let storeURL = storeDir.appendingPathComponent("default.store")
     let config = ModelConfiguration(url: storeURL)
 
-    return try ModelContainer(for: schema, configurations: [config])
+    return try ModelContainer(for: GlucoseSchema.schema, configurations: [config])
 }
 
-func readAppUserDefaults() -> UserDefaults? {
+/// Reads a single value from the sandboxed app's preferences plist.
+func readAppPreference(_ key: String) -> Any? {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let plistPath = home
         .appendingPathComponent("Library/Containers")
@@ -80,24 +76,13 @@ func readAppUserDefaults() -> UserDefaults? {
         .appendingPathComponent("Data/Library/Preferences")
         .appendingPathComponent("\(appBundleID).plist")
 
-    guard let dict = NSDictionary(contentsOf: plistPath) as? [String: Any] else {
-        return nil
-    }
-
-    let defaults = UserDefaults(suiteName: "libre-cli-cache")
-    dict.forEach { key, value in
-        defaults?.set(value, forKey: key)
-    }
-    return defaults
+    let dict = NSDictionary(contentsOf: plistPath) as? [String: Any]
+    return dict?[key]
 }
 
 func readLatestCached(from container: ModelContainer) throws -> PersistedGlucoseReading? {
     let context = ModelContext(container)
-    let descriptor = FetchDescriptor<PersistedGlucoseReading>(
-        predicate: #Predicate { $0.isLatest == true },
-        sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
-    )
-    return try context.fetch(descriptor).first
+    return try GlucoseCacheStore(context: context).latestReading()
 }
 
 // MARK: - Output Formatting
@@ -113,7 +98,7 @@ func formatReading(_ reading: PersistedGlucoseReading, unit: GlucoseUnit, asJSON
             "unit": unit.rawValue,
             "trend": trend.symbol,
             "trend_description": trend.description,
-            "timestamp": ISO8601DateFormatter().string(from: reading.timestamp),
+            "timestamp": reading.timestamp.formatted(.iso8601),
             "is_high": reading.isHigh,
             "is_low": reading.isLow,
             "age_seconds": ageSeconds,
@@ -212,7 +197,7 @@ case .help:
     exit(0)
 
 case .backgroundRefresh:
-    performBackgroundRefresh()
+    await performBackgroundRefresh()
     exit(0)
 
 case .printCached, .json:
@@ -225,8 +210,7 @@ case .printCached, .json:
 
         // Read unit preference from the sandboxed app's UserDefaults
         let unit: GlucoseUnit
-        let appDefaults = readAppUserDefaults()
-        if let unitStr = appDefaults?.string(forKey: "glucoseUnit"),
+        if let unitStr = readAppPreference("glucoseUnit") as? String,
            let parsed = GlucoseUnit(rawValue: unitStr) {
             unit = parsed
         } else {

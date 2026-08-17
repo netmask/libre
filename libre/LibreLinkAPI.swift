@@ -178,7 +178,7 @@ actor LibreLinkAPI {
             if let authData = loginResponse.data {
                 self.authToken = authData.authTicket.token
                 self.userId = authData.user.id
-                self.tokenExpiry = Date().addingTimeInterval(TimeInterval(authData.authTicket.duration))
+                self.tokenExpiry = Self.expiryDate(from: authData.authTicket)
                 logger.info("✅ Login successful, token received")
             }
 
@@ -392,12 +392,10 @@ actor LibreLinkAPI {
 
     // MARK: - Timestamp Parsing
 
-    private static let isoFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        return formatter
-    }()
-
-    private static let customFormatters: [DateFormatter] = {
+    // DateFormatter isn't Sendable, so these live on the actor (which
+    // serializes access) rather than in a static. The formats match the
+    // API's wire format, so this is data exchange, not user display.
+    private let customFormatters: [DateFormatter] = {
         ["M/d/yyyy h:mm:ss a", "MM/dd/yyyy h:mm:ss a", "M/d/yyyy H:mm:ss"].map { format in
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -407,11 +405,11 @@ actor LibreLinkAPI {
     }()
 
     private func parseTimestamp(_ ts: String) -> Date? {
-        if let date = Self.isoFormatter.date(from: ts) {
+        if let date = try? Date(ts, strategy: .iso8601) {
             return date
         }
 
-        for formatter in Self.customFormatters {
+        for formatter in customFormatters {
             if let date = formatter.date(from: ts) {
                 return date
             }
@@ -463,14 +461,28 @@ actor LibreLinkAPI {
     private func sha256Hash(_ input: String) -> String {
         let data = Data(input.utf8)
         let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Token Management
 
-    func setToken(_ token: String, expiry: Date) {
+    /// The auth ticket's `expires` field is an epoch timestamp for when the
+    /// token stops working. Fall back to `duration` (seconds from now) when
+    /// `expires` is missing or in the past relative to a fresh login.
+    static func expiryDate(from ticket: LoginResponse.AuthTicket) -> Date {
+        let fromExpires = Date(timeIntervalSince1970: TimeInterval(ticket.expires))
+        if fromExpires > Date.now {
+            return fromExpires
+        }
+        return Date.now.addingTimeInterval(TimeInterval(ticket.duration))
+    }
+
+    /// Restores a previously issued session (token + hashed account id inputs)
+    /// so callers can skip the password login while the token is still valid.
+    func restoreSession(token: String, expiry: Date, userId: String) {
         self.authToken = token
         self.tokenExpiry = expiry
+        self.userId = userId
     }
 
     func setRegion(_ region: String) {

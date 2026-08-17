@@ -8,6 +8,19 @@
 import Foundation
 import Security
 
+// MARK: - Keychain Keys
+
+/// Keychain keys shared between the app and the CLI's background refresh.
+nonisolated enum LibreKeychainKey {
+    static let email = "libre_email"
+    static let password = "libre_password"
+    static let region = "libre_region"
+    static let patientId = "libre_patient_id"
+    static let token = "libre_token"
+    static let tokenExpiry = "libre_token_expiry"
+    static let userId = "libre_user_id"
+}
+
 // MARK: - Keychain Service Protocol
 
 protocol KeychainServiceProtocol: Sendable {

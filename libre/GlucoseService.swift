@@ -9,26 +9,11 @@ import Foundation
 import SwiftUI
 import SwiftData
 
-// MARK: - Glucose Service Protocol
-
-protocol GlucoseServiceProtocol: AnyObject {
-    var currentReading: GlucoseReading? { get }
-    var connectionStatus: ConnectionStatus { get }
-    var lastUpdated: Date? { get }
-    var patientName: String? { get }
-
-    func login(email: String, password: String, region: LibreRegion) async throws
-    func logout()
-    func startMonitoring()
-    func stopMonitoring()
-    func refresh() async
-}
-
 // MARK: - Glucose Service
 
 @MainActor
 @Observable
-final class GlucoseService: GlucoseServiceProtocol {
+final class GlucoseService {
     private(set) var currentReading: GlucoseReading?
     private(set) var historyData: [GlucoseDataPoint] = []
     private(set) var connectionStatus: ConnectionStatus = .disconnected
@@ -39,7 +24,7 @@ final class GlucoseService: GlucoseServiceProtocol {
     /// Whether the current reading is older than 5 minutes and may be stale
     var isDataStale: Bool {
         guard let lastUpdated else { return false }
-        return Date().timeIntervalSince(lastUpdated) > 5 * 60
+        return Date.now.timeIntervalSince(lastUpdated) > 5 * 60
     }
 
     var selectedRegion: LibreRegion = .us
@@ -84,7 +69,7 @@ final class GlucoseService: GlucoseServiceProtocol {
         }
 
         // Load persisted patientId
-        if let savedPatientId = try? (keychainService ?? KeychainService()).load(key: "libre_patient_id") {
+        if let savedPatientId = try? self.keychainService.load(key: LibreKeychainKey.patientId) {
             self.patientId = savedPatientId
         }
 
@@ -104,12 +89,24 @@ final class GlucoseService: GlucoseServiceProtocol {
             // Set region before login
             await api.setRegion(region.rawValue)
 
-            _ = try await api.login(email: email, password: password)
+            let response = try await api.login(email: email, password: password)
 
             // Save credentials and region securely
-            try? keychainService.save(key: "libre_email", value: email)
-            try? keychainService.save(key: "libre_password", value: password)
-            try? keychainService.save(key: "libre_region", value: region.rawValue)
+            try? keychainService.save(key: LibreKeychainKey.email, value: email)
+            try? keychainService.save(key: LibreKeychainKey.password, value: password)
+            try? keychainService.save(key: LibreKeychainKey.region, value: region.rawValue)
+
+            // Persist the session token so future launches (and the CLI)
+            // can skip the password login while it's still valid.
+            if let authData = response.data {
+                let expiry = LibreLinkAPI.expiryDate(from: authData.authTicket)
+                try? keychainService.save(key: LibreKeychainKey.token, value: authData.authTicket.token)
+                try? keychainService.save(
+                    key: LibreKeychainKey.tokenExpiry,
+                    value: String(expiry.timeIntervalSince1970)
+                )
+                try? keychainService.save(key: LibreKeychainKey.userId, value: authData.user.id)
+            }
 
             // Get connections
             let connections = try await api.getConnections()
@@ -117,7 +114,7 @@ final class GlucoseService: GlucoseServiceProtocol {
                 patientId = firstConnection.patientId
                 patientName = "\(firstConnection.firstName) \(firstConnection.lastName)"
                 // Persist patientId and name
-                try? keychainService.save(key: "libre_patient_id", value: firstConnection.patientId)
+                try? keychainService.save(key: LibreKeychainKey.patientId, value: firstConnection.patientId)
                 UserDefaults.standard.set(patientName, forKey: "patientName")
             }
 
@@ -139,10 +136,16 @@ final class GlucoseService: GlucoseServiceProtocol {
     func logout() {
         stopMonitoring()
         Task { await api.logout() }
-        try? keychainService.delete(key: "libre_email")
-        try? keychainService.delete(key: "libre_password")
-        try? keychainService.delete(key: "libre_token")
-        try? keychainService.delete(key: "libre_patient_id")
+        for key in [
+            LibreKeychainKey.email,
+            LibreKeychainKey.password,
+            LibreKeychainKey.token,
+            LibreKeychainKey.tokenExpiry,
+            LibreKeychainKey.userId,
+            LibreKeychainKey.patientId
+        ] {
+            try? keychainService.delete(key: key)
+        }
         UserDefaults.standard.removeObject(forKey: "patientName")
         currentReading = nil
         historyData = []
@@ -153,19 +156,70 @@ final class GlucoseService: GlucoseServiceProtocol {
     }
 
     func tryAutoLogin() async -> Bool {
-        guard let email = try? keychainService.load(key: "libre_email"),
-              let password = try? keychainService.load(key: "libre_password") else {
-            return false
+        // Load saved region or default to US
+        let regionString = try? keychainService.load(key: LibreKeychainKey.region)
+        let region = LibreRegion(rawValue: regionString ?? "us") ?? .us
+
+        // First choice: restore the saved session token and skip the
+        // password login entirely.
+        if await tryRestoreSession(region: region) {
+            return true
         }
 
-        // Load saved region or default to US
-        let regionString = try? keychainService.load(key: "libre_region")
-        let region = LibreRegion(rawValue: regionString ?? "us") ?? .us
+        guard let email = try? keychainService.load(key: LibreKeychainKey.email),
+              let password = try? keychainService.load(key: LibreKeychainKey.password) else {
+            return false
+        }
 
         do {
             try await login(email: email, password: password, region: region)
             return true
         } catch {
+            return false
+        }
+    }
+
+    /// Restores a persisted, unexpired session token. Returns false (after
+    /// discarding the token, so we don't retry a rejected one) if anything
+    /// is missing or the API refuses it.
+    private func tryRestoreSession(region: LibreRegion) async -> Bool {
+        guard let token = try? keychainService.load(key: LibreKeychainKey.token),
+              let expiryString = try? keychainService.load(key: LibreKeychainKey.tokenExpiry),
+              let expiryEpoch = Double(expiryString),
+              Date(timeIntervalSince1970: expiryEpoch) > .now,
+              let userId = try? keychainService.load(key: LibreKeychainKey.userId) else {
+            return false
+        }
+
+        selectedRegion = region
+        connectionStatus = .connecting
+        await api.setRegion(region.rawValue)
+        await api.restoreSession(
+            token: token,
+            expiry: Date(timeIntervalSince1970: expiryEpoch),
+            userId: userId
+        )
+
+        do {
+            // getConnections doubles as token validation.
+            let connections = try await api.getConnections()
+            if let firstConnection = connections.first {
+                patientId = firstConnection.patientId
+                patientName = "\(firstConnection.firstName) \(firstConnection.lastName)"
+                try? keychainService.save(key: LibreKeychainKey.patientId, value: firstConnection.patientId)
+                UserDefaults.standard.set(patientName, forKey: "patientName")
+            }
+            connectionStatus = .connected
+            consecutiveFailures = 0
+            await refresh()
+            return true
+        } catch {
+            // Token rejected or network trouble — drop it and let the
+            // password path take over.
+            try? keychainService.delete(key: LibreKeychainKey.token)
+            try? keychainService.delete(key: LibreKeychainKey.tokenExpiry)
+            await api.logout()
+            connectionStatus = .disconnected
             return false
         }
     }
@@ -199,13 +253,13 @@ final class GlucoseService: GlucoseServiceProtocol {
     }
 
     func refresh() async {
-        guard let patientId = patientId else { return }
+        guard let patientId else { return }
 
         do {
             let result = try await api.getGlucoseDataWithHistory(patientId: patientId)
             currentReading = result.current
             historyData = result.history
-            lastUpdated = Date()
+            lastUpdated = Date.now
             connectionStatus = .connected
             consecutiveFailures = 0
 
@@ -224,9 +278,6 @@ final class GlucoseService: GlucoseServiceProtocol {
         } catch LibreAPIError.rateLimited {
             consecutiveFailures += 1
             connectionStatus = .error("Rate limited. Backing off...")
-        } catch let error as LibreAPIError {
-            consecutiveFailures += 1
-            connectionStatus = .error(error.localizedDescription)
         } catch {
             consecutiveFailures += 1
             connectionStatus = .error(error.localizedDescription)
@@ -237,95 +288,35 @@ final class GlucoseService: GlucoseServiceProtocol {
 
     func updateRefreshInterval(_ interval: TimeInterval) {
         refreshInterval = interval
+        restartMonitoringIfActive()
+    }
+
+    /// Restarts the refresh loop so a changed interval takes effect;
+    /// does nothing if monitoring isn't running.
+    func restartMonitoringIfActive() {
         if refreshTask != nil {
-            startMonitoring() // Restart with new interval
+            startMonitoring()
         }
     }
 
     // MARK: - Persistence
 
     func loadCachedData() {
-        guard let modelContext = modelContext else { return }
+        guard let modelContext else { return }
+        let store = GlucoseCacheStore(context: modelContext)
 
-        // Load latest reading
-        let latestDescriptor = FetchDescriptor<PersistedGlucoseReading>(
-            predicate: #Predicate { $0.isLatest == true },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
-        )
-
-        if let latestReading = try? modelContext.fetch(latestDescriptor).first {
+        if let latestReading = try? store.latestReading() {
             currentReading = latestReading.toGlucoseReading()
             lastUpdated = latestReading.timestamp
         }
 
-        // Load history from last 24 hours
-        let twentyFourHoursAgo = Date().addingTimeInterval(-24 * 60 * 60)
-        let historyDescriptor = FetchDescriptor<PersistedGlucoseDataPoint>(
-            predicate: #Predicate { $0.timestamp >= twentyFourHoursAgo },
-            sortBy: [SortDescriptor(\.timestamp, order: .forward)]
-        )
-
-        if let cachedHistory = try? modelContext.fetch(historyDescriptor) {
+        if let cachedHistory = try? store.recentHistory() {
             historyData = cachedHistory.map { $0.toGlucoseDataPoint() }
         }
     }
 
     private func saveToCache(current: GlucoseReading, history: [GlucoseDataPoint]) {
-        guard let modelContext = modelContext else { return }
-
-        // Clear old "latest" flag
-        let latestDescriptor = FetchDescriptor<PersistedGlucoseReading>(
-            predicate: #Predicate { $0.isLatest == true }
-        )
-        if let oldLatest = try? modelContext.fetch(latestDescriptor) {
-            for reading in oldLatest {
-                reading.isLatest = false
-            }
-        }
-
-        // Save new latest reading
-        let persistedReading = PersistedGlucoseReading(from: current, isLatest: true)
-        modelContext.insert(persistedReading)
-
-        // Delete old history points (older than 24 hours)
-        let twentyFourHoursAgo = Date().addingTimeInterval(-24 * 60 * 60)
-        let oldPointsDescriptor = FetchDescriptor<PersistedGlucoseDataPoint>(
-            predicate: #Predicate { $0.timestamp < twentyFourHoursAgo }
-        )
-        if let oldPoints = try? modelContext.fetch(oldPointsDescriptor) {
-            for point in oldPoints {
-                modelContext.delete(point)
-            }
-        }
-
-        // Delete old readings (older than 24 hours)
-        let oldReadingsDescriptor = FetchDescriptor<PersistedGlucoseReading>(
-            predicate: #Predicate { $0.timestamp < twentyFourHoursAgo }
-        )
-        if let oldReadings = try? modelContext.fetch(oldReadingsDescriptor) {
-            for reading in oldReadings {
-                modelContext.delete(reading)
-            }
-        }
-
-        // Batch-check existing timestamps to avoid N+1 queries
-        let allPointsDescriptor = FetchDescriptor<PersistedGlucoseDataPoint>(
-            predicate: #Predicate { $0.timestamp >= twentyFourHoursAgo }
-        )
-        let existingTimestamps: Set<Date>
-        if let existingPoints = try? modelContext.fetch(allPointsDescriptor) {
-            existingTimestamps = Set(existingPoints.map { $0.timestamp })
-        } else {
-            existingTimestamps = []
-        }
-
-        for dataPoint in history {
-            if !existingTimestamps.contains(dataPoint.timestamp) {
-                let persistedPoint = PersistedGlucoseDataPoint(from: dataPoint)
-                modelContext.insert(persistedPoint)
-            }
-        }
-
-        try? modelContext.save()
+        guard let modelContext else { return }
+        try? GlucoseCacheStore(context: modelContext).save(current: current, history: history)
     }
 }

@@ -17,14 +17,10 @@ struct libreApp: App {
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = false
 
     init() {
-        let schema = Schema([
-            PersistedGlucoseReading.self,
-            PersistedGlucoseDataPoint.self
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(schema: GlucoseSchema.schema, isStoredInMemoryOnly: false)
 
         do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: GlucoseSchema.schema, configurations: [modelConfiguration])
             self.modelContainer = container
             let service = GlucoseService(modelContext: container.mainContext)
             // Load cached data immediately so menu bar shows reading on launch
@@ -42,19 +38,10 @@ struct libreApp: App {
                     .environment(glucoseService)
                     .modelContainer(modelContainer)
             } else {
-                VStack(spacing: 12) {
-                    Text("Please accept the disclaimer to continue")
-                        .font(.headline)
-                    Button("Show Disclaimer") {
+                DisclaimerPromptView()
+                    .onAppear {
                         openWindow(id: "disclaimer")
                     }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding()
-                .frame(width: 300)
-                .onAppear {
-                    openWindow(id: "disclaimer")
-                }
             }
         } label: {
             MenuBarLabel(
