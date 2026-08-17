@@ -211,7 +211,7 @@ enum ConnectionStatus: Equatable {
 
 // MARK: - API Response Models
 
-struct LoginResponse: Codable {
+nonisolated struct LoginResponse: Codable {
     let status: Int
     let data: AuthData?
 
@@ -234,7 +234,7 @@ struct LoginResponse: Codable {
     }
 }
 
-struct ConnectionsResponse: Codable {
+nonisolated struct ConnectionsResponse: Codable {
     let status: Int
     let data: [Connection]
 
@@ -245,7 +245,7 @@ struct ConnectionsResponse: Codable {
     }
 }
 
-struct GlucoseResponse: Codable {
+nonisolated struct GlucoseResponse: Codable {
     let status: Int
     let data: GlucoseData?
 

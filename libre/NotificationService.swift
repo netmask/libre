@@ -104,9 +104,10 @@ final class NotificationService {
     }
 
     func checkAuthorization() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let authorized = settings.authorizationStatus == .authorized
             Task { @MainActor in
-                self?.isAuthorized = settings.authorizationStatus == .authorized
+                self.isAuthorized = authorized
             }
         }
     }
@@ -169,10 +170,10 @@ final class NotificationService {
             trigger: nil // Deliver immediately
         )
 
-        UNUserNotificationCenter.current().add(request) { [weak self] error in
+        UNUserNotificationCenter.current().add(request) { error in
             if error == nil {
                 Task { @MainActor in
-                    self?.lastAlertTimes[type] = Date()
+                    self.lastAlertTimes[type] = Date()
                 }
             }
         }

@@ -11,35 +11,38 @@ import os.log
 
 // MARK: - Debug Logger
 
-private struct DebugLogger {
+private nonisolated struct DebugLogger {
     private let logger = Logger(subsystem: "mx.garay.libre", category: "LibreLinkAPI")
 
+    // Interpolated strings are marked `.public` so the request/response details
+    // are actually readable in Console.app; os.Logger otherwise redacts them as <private>.
+    // Logging is DEBUG-only so release builds stay silent.
     func debug(_ message: String) {
         #if DEBUG
-        logger.debug("\(message)")
+        logger.debug("\(message, privacy: .public)")
         #endif
     }
 
     func info(_ message: String) {
         #if DEBUG
-        logger.info("\(message)")
+        logger.info("\(message, privacy: .public)")
         #endif
     }
 
     func warning(_ message: String) {
         #if DEBUG
-        logger.warning("\(message)")
+        logger.warning("\(message, privacy: .public)")
         #endif
     }
 
     func error(_ message: String) {
         #if DEBUG
-        logger.error("\(message)")
+        logger.error("\(message, privacy: .public)")
         #endif
     }
 }
 
-private let logger = DebugLogger()
+private nonisolated let logger = DebugLogger()
 
 // MARK: - URL Session Protocol
 
@@ -145,15 +148,17 @@ actor LibreLinkAPI {
         logger.info("🟢 LOGIN RESPONSE")
         logger.info("   Status: \(httpResponse.statusCode)")
         logHeaders(httpResponse.allHeaderFields as? [String: String] ?? [:], prefix: "   ")
-        if let responseString = String(data: data, encoding: .utf8) {
+        if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
             logger.info("   Body: \(responseString)")
         }
 
         // Handle region redirect (status 2 in response body)
         if httpResponse.statusCode == 200 {
-            // First check for redirect
+            // First check for region redirect.
+            // The API signals a redirect with `{"status":0,"data":{"redirect":true,"region":"xx"}}`.
+            // Note: status 0 means success here (status 2 is actually an error response),
+            // so we key purely on the `redirect` flag rather than the status code.
             if let redirectData = try? JSONDecoder().decode(RedirectResponse.self, from: data),
-               redirectData.status == 2,
                let redirect = redirectData.data?.redirect,
                redirect == true,
                let region = redirectData.data?.region {
@@ -192,14 +197,14 @@ actor LibreLinkAPI {
 
         if httpResponse.statusCode == 403 {
             logger.error("🔴 Forbidden (403) - Check headers and request format")
-            if let responseString = String(data: data, encoding: .utf8) {
+            if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
                 logger.error("   Response body: \(responseString)")
             }
             throw LibreAPIError.serverError(403)
         }
 
         logger.error("🔴 Server error: \(httpResponse.statusCode)")
-        if let responseString = String(data: data, encoding: .utf8) {
+        if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
             logger.error("   Response body: \(responseString)")
         }
         throw LibreAPIError.serverError(httpResponse.statusCode)
@@ -257,7 +262,7 @@ actor LibreLinkAPI {
         // Log response
         logger.info("🟢 CONNECTIONS RESPONSE")
         logger.info("   Status: \(httpResponse.statusCode)")
-        if let responseString = String(data: data, encoding: .utf8) {
+        if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
             logger.info("   Body: \(responseString)")
         }
 
@@ -321,7 +326,7 @@ actor LibreLinkAPI {
         // Log response
         logger.info("🟢 GLUCOSE DATA RESPONSE")
         logger.info("   Status: \(httpResponse.statusCode)")
-        if let responseString = String(data: data, encoding: .utf8) {
+        if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
             // Truncate if too long
             let truncated = responseString.count > 500 ? String(responseString.prefix(500)) + "..." : responseString
             logger.info("   Body: \(truncated)")
@@ -339,7 +344,7 @@ actor LibreLinkAPI {
 
         if httpResponse.statusCode == 403 {
             logger.error("🔴 Forbidden (403)")
-            if let responseString = String(data: data, encoding: .utf8) {
+            if let responseString = String(data: data, encoding: .utf8).map(Self.redactTokens) {
                 logger.error("   Response: \(responseString)")
             }
             throw LibreAPIError.serverError(403)
@@ -445,6 +450,16 @@ actor LibreLinkAPI {
         return request
     }
 
+    /// Masks JWT/auth token values in a JSON string before it is logged, so tokens
+    /// never reach the system log. Matches `"token":"..."` and `"trustedDeviceToken":"..."`.
+    private static func redactTokens(_ json: String) -> String {
+        json.replacingOccurrences(
+            of: "\"(token|trustedDeviceToken)\":\"[^\"]*\"",
+            with: "\"$1\":\"****\"",
+            options: .regularExpression
+        )
+    }
+
     private func sha256Hash(_ input: String) -> String {
         let data = Data(input.utf8)
         let hash = SHA256.hash(data: data)
@@ -468,7 +483,7 @@ actor LibreLinkAPI {
 
 // MARK: - Redirect Response
 
-private struct RedirectResponse: Codable {
+private nonisolated struct RedirectResponse: Codable {
     let status: Int
     let data: RedirectData?
 

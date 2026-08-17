@@ -21,7 +21,7 @@ let stalenessThreshold: TimeInterval = 60  // Trigger background refresh if olde
 
 // MARK: - Argument Parsing
 
-enum CLIMode {
+nonisolated enum CLIMode {
     case printCached
     case json
     case backgroundRefresh
@@ -42,7 +42,7 @@ func parseArguments() -> CLIMode {
 /// live inside ~/Library/Containers/<bundle-id>/Data/
 let appBundleID = "garay.mx.libre"
 
-func appContainerURL() -> URL? {
+nonisolated func appContainerURL() -> URL? {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let container = home
         .appendingPathComponent("Library/Containers")
@@ -55,7 +55,7 @@ func appContainerURL() -> URL? {
     return nil
 }
 
-func createModelContainer() throws -> ModelContainer {
+nonisolated func createModelContainer() throws -> ModelContainer {
     let schema = Schema([
         PersistedGlucoseReading.self,
         PersistedGlucoseDataPoint.self
